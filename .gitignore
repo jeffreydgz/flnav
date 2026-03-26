@@ -106,6 +106,8 @@ prefix/
 CMakeLists.txt.user
 CMakeUserPresets.json
 vcpkg_installed/
+# CI workflows (not needed in private fork)
+.github/workflows/
 # Sensitive
 .secrets
 # Test temporaries
