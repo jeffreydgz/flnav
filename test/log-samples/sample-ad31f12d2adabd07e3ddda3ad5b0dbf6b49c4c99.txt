@@ -1,0 +1,16 @@
+             Jun  2 00:34:32 Tim-Stacks-iMac kernel[0]: vmnet: VNetUserIf_Create: created userIf at 0xffffff802644f400
+ key  43:48                                             ^---^                                                           vmnet
+quot  49:49                                                  ^                                                          
+ val  49:49                                                  ^                                                          
+pair  43:49                                             ^----^                                                          vmnet:
+word  84:86                                                                                      ^^                     at
+ key  84:86                                                                                      ^^                     at
+ hex  87:105                                                                                        ^----------------^  0xffffff802644f400
+ val  87:105                                                                                        ^----------------^  0xffffff802644f400
+pair  84:105                                                                                     ^-------------------^  at 0xffffff802644f400
+msg         :vmnet: VNetUserIf_Create: created userIf at 0xffffff802644f400
+format      :vmnet:# VNetUserIf_Create: created userIf at #
+{
+    "vmnet": "",
+    "at": "0xffffff802644f400"
+}

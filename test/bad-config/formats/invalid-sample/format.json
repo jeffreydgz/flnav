@@ -1,0 +1,49 @@
+{
+    "$schema": "https://lnav.org/schemas/format-v1.schema.json",
+    "bad_sample_log": {
+        "title": "invalid sample test",
+        "regex": {
+            "std": {
+                "pattern": "^(?<timestamp>\\d+): (?<pid>\\w+) (?<body>.*)$"
+            },
+            "semi": {
+                "pattern": "^(?<timestamp>\\d+); (?<body>\\w+)$"
+            },
+            "bad-time": {
+                "pattern": "^(?<timestamp>\\w+): (?<body>\\w+)$"
+            },
+            "with-level": {
+                "pattern": "^(?<timestamp>\\d+)\\| (?<level>\\w+) (?<body>\\w+)$"
+            }
+        },
+        "timestamp-format": [
+            "%i"
+        ],
+        "value": {
+            "pid": {
+                "kind": "foo"
+            }
+        },
+        "level-field": "level",
+        "level": {
+            "info": "info",
+            "debug": "debug"
+        },
+        "sample": [
+            {
+                "line": "abc: foo"
+            },
+            {
+                "line": "1428634687123| debug hello",
+                "level": "info"
+            },
+            {
+                "line": "1428634687123| debug hello\ngoodbye",
+                "level": "debug"
+            },
+            {
+                "line": "1428634687123; foo bar"
+            }
+        ]
+    }
+}

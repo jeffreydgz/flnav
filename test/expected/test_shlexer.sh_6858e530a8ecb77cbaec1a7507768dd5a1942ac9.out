@@ -1,0 +1,6 @@
+    ${FOO}
+qrf ^----^
+eof      ^
+eval -- bar
+split:
+  0 ^----^ -- bar

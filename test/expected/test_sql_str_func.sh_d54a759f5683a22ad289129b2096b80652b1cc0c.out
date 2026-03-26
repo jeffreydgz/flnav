@@ -1,0 +1,42 @@
+[
+    {
+        "log_body": "[VpxLRO] -- BEGIN lro-846063 -- SessionManager -- vim.SessionManager.sessionIsActive -- 528e6e0c-246d-58b5-3234-278c6e0c5d0d(52c289ac-2563-48d5-8a8e-f178da022c0d)",
+        "extract(log_body)": {
+            "col_0": [
+                "VpxLRO"
+            ],
+            "BEGIN": "lro-846063",
+            "col_1": "SessionManager",
+            "col_2": "vim.SessionManager.sessionIsActive",
+            "col_3": "528e6e0c-246d-58b5-3234-278c6e0c5d0d",
+            "col_4": [
+                "52c289ac-2563-48d5-8a8e-f178da022c0d"
+            ]
+        }
+    },
+    {
+        "log_body": "[VpxLRO] -- FINISH lro-846063",
+        "extract(log_body)": {
+            "col_0": [
+                "VpxLRO"
+            ],
+            "FINISH": "lro-846063"
+        }
+    },
+    {
+        "log_body": "Exception was thrown when call vsan-performance-manager for cluster [vim.ClusterComputeResource:domain-c109,Cluster-52] perf metrics: N3Vim5Fault8NotFound9ExceptionE(Fault cause: vim.fault.NotFound\n--> )",
+        "extract(log_body)": {
+            "call": "vsan-performance-manager",
+            "cluster": {
+                "vim.ClusterComputeResource": "domain-c109",
+                "col_0": "Cluster-52"
+            },
+            "col_0": "perf",
+            "metrics": "",
+            "N3Vim5Fault8NotFound9ExceptionE": {
+                "Fault cause": "vim.fault.NotFound",
+                "col_0": ">"
+            }
+        }
+    }
+]

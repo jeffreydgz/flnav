@@ -1,0 +1,349 @@
+/**
+ * Copyright (c) 2014, Timothy Stack
+ *
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice, this
+ * list of conditions and the following disclaimer.
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ * this list of conditions and the following disclaimer in the documentation
+ * and/or other materials provided with the distribution.
+ * * Neither the name of Timothy Stack nor the names of its contributors
+ * may be used to endorse or promote products derived from this software
+ * without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ''AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * @file ptimec_rt.cc
+ */
+
+#include "ptimec.hh"
+
+#include <string.h>
+
+#include "base/short_alloc.h"
+#include "config.h"
+
+bool
+ptime_b_slow(struct exttm* dst, const char* str, off_t& off_inout, ssize_t len)
+{
+    size_t zone_len = len - off_inout;
+    stack_buf allocator;
+    auto* zone = allocator.allocate(zone_len + 2);
+    const char* end_of_date;
+
+    memcpy(zone, &str[off_inout], zone_len);
+    zone[zone_len] = '\0';
+    if ((end_of_date = strptime(zone, "%b", &dst->et_tm)) != nullptr) {
+        off_inout += end_of_date - zone;
+        // Some formats append a dot, maybe to align a 3 letter abbrev with the
+        // four letter ones?
+        if (off_inout + 1 < len && zone[off_inout] == '.') {
+            off_inout += 1;
+        }
+        dst->et_flags |= ETF_MONTH_SET;
+        return true;
+    }
+
+    // Some locales (e.g., es_ES on macOS) use abbreviated months with a
+    // trailing dot ("ene.", "feb."). If the input lacks the dot, insert one
+    // after the alphabetic prefix and retry.
+    {
+        off_t alpha_len = 0;
+        while (alpha_len < (off_t) zone_len && isalpha(zone[alpha_len])) {
+            alpha_len++;
+        }
+        if (alpha_len > 0 && (alpha_len >= (off_t) zone_len
+                              || zone[alpha_len] != '.'))
+        {
+            memmove(zone + alpha_len + 1, zone + alpha_len,
+                    zone_len - alpha_len + 1);
+            zone[alpha_len] = '.';
+            if ((end_of_date = strptime(zone, "%b", &dst->et_tm)) != nullptr) {
+                auto consumed = end_of_date - zone;
+                // Subtract the inserted dot from consumed length if strptime
+                // consumed past it
+                if (consumed > alpha_len) {
+                    off_inout += consumed - 1;
+                } else {
+                    off_inout += consumed;
+                }
+                dst->et_flags |= ETF_MONTH_SET;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool
+ptime_Z_to_gmtoff(exttm* dst, const char* str, off_t& off_inout, ssize_t len)
+{
+    auto avail = len - off_inout;
+
+    if (avail < 3) {
+        return false;
+    }
+
+    auto zone_start = (unsigned char*) &str[off_inout];
+    uint32_t zone_int = ABR_TO_INT4(zone_start[0] & ~0x20UL,
+                                    zone_start[1] & ~0x20UL,
+                                    zone_start[2] & ~0x20UL,
+                                    avail >= 4 ? zone_start[3] & ~0x20UL : 0);
+    switch (zone_int) {
+        case ABR_TO_INT('U', 'T', 'C'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET | ETF_Z_IS_UTC; });
+            dst->et_gmtoff = 0;
+            break;
+        case ABR_TO_INT('G', 'M', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET | ETF_Z_IS_GMT; });
+            dst->et_gmtoff = 0;
+            break;
+        case ABR_TO_INT('E', 'A', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = 3 * 60 * 60;
+            break;
+        case ABR_TO_INT('W', 'A', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = 1 * 60 * 60;
+            break;
+        case ABR_TO_INT('C', 'E', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = 1 * 60 * 60;
+            break;
+        case ABR_TO_INT('C', 'A', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = 2 * 60 * 60;
+            break;
+        case ABR_TO_INT4('C', 'E', 'D', 'T'):
+        case ABR_TO_INT4('C', 'E', 'S', 'T'):
+            PTIME_CONSUME(4, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = 2 * 60 * 60;
+            break;
+        case ABR_TO_INT('M', 'S', 'K'):
+        case ABR_TO_INT('I', 'D', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = 3 * 60 * 60;
+            break;
+        case ABR_TO_INT('I', 'S', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = 5 * 60 * 60 + 30 * 60;
+            break;
+        case ABR_TO_INT('H', 'K', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = 8 * 60 * 60;
+            break;
+        case ABR_TO_INT('J', 'S', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = 9 * 60 * 60;
+            break;
+        case ABR_TO_INT('K', 'S', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = 9 * 60 * 60;
+            break;
+        case ABR_TO_INT('N', 'S', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = -3 * 60 * 60 + 30 * 60;
+            break;
+        case ABR_TO_INT('N', 'D', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = -2 * 60 * 60 + 30 * 60;
+            break;
+        case ABR_TO_INT('E', 'S', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = -5 * 60 * 60;
+            break;
+        case ABR_TO_INT('E', 'D', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = -4 * 60 * 60;
+            break;
+        case ABR_TO_INT('C', 'S', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = -6 * 60 * 60;
+            break;
+        case ABR_TO_INT('C', 'D', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = -5 * 60 * 60;
+            break;
+        case ABR_TO_INT('M', 'S', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = -7 * 60 * 60;
+            break;
+        case ABR_TO_INT('M', 'D', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = -6 * 60 * 60;
+            break;
+        case ABR_TO_INT('P', 'S', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = -8 * 60 * 60;
+            break;
+        case ABR_TO_INT('P', 'D', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = -7 * 60 * 60;
+            break;
+        case ABR_TO_INT('H', 'S', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = -10 * 60 * 60;
+            break;
+        case ABR_TO_INT('A', 'S', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = -4 * 60 * 60;
+            break;
+        case ABR_TO_INT('A', 'D', 'T'):
+            PTIME_CONSUME(3, { dst->et_flags |= ETF_ZONE_SET; });
+            dst->et_gmtoff = -3 * 60 * 60;
+            break;
+        default:
+            return false;
+    }
+    return true;
+}
+
+#define FMT_CASE(ch, c) \
+    case ch: \
+        if (!ptime_##c(dst, str, off, len)) \
+            return false; \
+        lpc += 1; \
+        break
+
+bool
+ptime_fmt(const char* fmt,
+          struct exttm* dst,
+          const char* str,
+          off_t& off,
+          ssize_t len)
+{
+    for (ssize_t lpc = 0; fmt[lpc]; lpc++) {
+        if (fmt[lpc] == '%') {
+            switch (fmt[lpc + 1]) {
+                case 'B': {
+                    size_t b_len = len - off;
+                    stack_buf allocator;
+                    auto* full_month = allocator.allocate(b_len + 1);
+                    const char* end_of_date;
+
+                    memcpy(full_month, &str[off], b_len);
+                    full_month[b_len] = '\0';
+                    if ((end_of_date = strptime(full_month, "%B", &dst->et_tm))
+                        != nullptr)
+                    {
+                        off += end_of_date - full_month;
+                        lpc += 1;
+                    } else {
+                        return false;
+                    }
+                    break;
+                }
+                case 'a':
+                case 'Z':
+                    if (fmt[lpc + 2]) {
+                        if (!ptime_upto(fmt[lpc + 2], str, off, len)) {
+                            return false;
+                        }
+                        lpc += 1;
+                    } else {
+                        if (!ptime_upto_end(str, off, len)) {
+                            return false;
+                        }
+                        lpc += 1;
+                    }
+                    break;
+                    FMT_CASE('b', b);
+                    FMT_CASE('S', S);
+                    FMT_CASE('s', s);
+                    FMT_CASE('L', L);
+                    FMT_CASE('M', M);
+                    FMT_CASE('H', H);
+                    FMT_CASE('i', i);
+                    FMT_CASE('6', 6);
+                    FMT_CASE('9', 9);
+                    FMT_CASE('I', I);
+                    FMT_CASE('d', d);
+                    FMT_CASE('e', e);
+                    FMT_CASE('j', j);
+                    FMT_CASE('f', f);
+                    FMT_CASE('k', k);
+                    FMT_CASE('l', l);
+                    FMT_CASE('m', m);
+                    FMT_CASE('N', N);
+                    FMT_CASE('p', p);
+                    FMT_CASE('q', q);
+                    FMT_CASE('Y', Y);
+                    FMT_CASE('y', y);
+                    FMT_CASE('z', z);
+                    FMT_CASE('@', at);
+            }
+        } else {
+            if (!ptime_char(fmt[lpc], str, off, len)) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+#define FTIME_FMT_CASE(ch, c) \
+    case ch: \
+        ftime_##c(dst, off_inout, len, tm); \
+        lpc += 1; \
+        break
+
+size_t
+ftime_fmt(char* dst, size_t len, const char* fmt, const struct exttm& tm)
+{
+    off_t off_inout = 0;
+
+    for (ssize_t lpc = 0; fmt[lpc]; lpc++) {
+        if (fmt[lpc] == '%') {
+            switch (fmt[lpc + 1]) {
+                case '%':
+                    ftime_char(dst, off_inout, len, '%');
+                    break;
+                    FTIME_FMT_CASE('a', a);
+                    FTIME_FMT_CASE('b', b);
+                    FTIME_FMT_CASE('S', S);
+                    FTIME_FMT_CASE('s', s);
+                    FTIME_FMT_CASE('L', L);
+                    FTIME_FMT_CASE('M', M);
+                    FTIME_FMT_CASE('H', H);
+                    FTIME_FMT_CASE('i', i);
+                    FTIME_FMT_CASE('6', 6);
+                    FTIME_FMT_CASE('9', 9);
+                    FTIME_FMT_CASE('I', I);
+                    FTIME_FMT_CASE('d', d);
+                    FTIME_FMT_CASE('e', e);
+                    FTIME_FMT_CASE('j', j);
+                    FTIME_FMT_CASE('f', f);
+                    FTIME_FMT_CASE('k', k);
+                    FTIME_FMT_CASE('l', l);
+                    FTIME_FMT_CASE('m', m);
+                    FTIME_FMT_CASE('N', N);
+                    FTIME_FMT_CASE('p', p);
+                    FTIME_FMT_CASE('q', q);
+                    FTIME_FMT_CASE('Y', Y);
+                    FTIME_FMT_CASE('y', y);
+                    FTIME_FMT_CASE('z', z);
+            }
+        } else {
+            ftime_char(dst, off_inout, len, fmt[lpc]);
+        }
+    }
+
+    dst[off_inout] = '\0';
+
+    return (size_t) off_inout;
+}

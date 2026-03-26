@@ -1,0 +1,26 @@
+             <ns1:foo>   <elem attr1=xyz attr2="123">  </elem>  <closed />
+ key   0:0                                                                  
+xmlo   0:9   ^-------^                                                      <ns1:foo>
+pair   0:9   ^-------^                                                      <ns1:foo>
+ key  12:12             ^                                                   
+xmlo  12:40              ^--------------------------^                       <elem attr1=xyz attr2="123">
+pair  12:40              ^--------------------------^                       <elem attr1=xyz attr2="123">
+ key  42:42                                           ^                     
+xmlc  42:49                                            ^-----^              </elem>
+pair  42:49                                            ^-----^              </elem>
+ key  51:51                                                    ^            
+xmlt  51:61                                                     ^--------^  <closed />
+pair  51:61                                                     ^--------^  <closed />
+msg         :<ns1:foo>   <elem attr1=xyz attr2="123">  </elem>  <closed />
+format      :#   #  #  #
+
+--
+<ns1:foo>
+    <elem attr1=xyz attr2="123">  </elem>
+    <closed />
+{
+    "col_0": "<ns1:foo>",
+    "col_1": "<elem attr1=xyz attr2=\"123\">",
+    "col_2": "</elem>",
+    "col_3": "<closed />"
+}

@@ -1,0 +1,103 @@
+name: ci-build
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - docs
+      - README.md
+      - NEWS.md
+  pull_request:
+    types: [opened, synchronize, edited, ready_for_review]
+    branches: [master]
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Update apt
+        run: sudo apt-get update
+      - name: Install packages
+        run: sudo apt-get install automake autoconf g++ libsqlite3-dev libbz2-dev libcurl4-openssl-dev zlib1g-dev lcov libunistring-dev pipx
+      - name: install cpp-coveralls
+        run: |
+          git clone https://github.com/CrowCpp/cpp-coveralls.git
+          cd cpp-coveralls
+          pip3 install . --no-input
+      - name: autogen
+        run: ./autogen.sh
+      - name: configure
+        run: ./configure --disable-static --enable-code-coverage --enable-debug --prefix=/usr/local CFLAGS=-g3 CXXFLAGS=-g3
+      - name: make
+        run: make -j3
+      - name: make check
+        run: env TEST_GIT_INSTALL=1 make check || (test -e src/tailer/test-suite.log && cat src/tailer/test-suite.log && false) || (test -e test/test-suite.log && cat test/test-suite.log && false)
+      - name: upload cover
+        env:
+          COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
+          TRAVIS_JOB_ID: ${{ github.run_id }}-${{ github.run_number }}
+        run: >-
+          coveralls
+          --exclude src/doctest.hh
+          --exclude src/fmtlib
+          --exclude src/ghc
+          --exclude src/k_merge_tree.h
+          --exclude src/mapbox
+          --exclude src/pugixml
+          --exclude src/base/result.h
+          --exclude src/safe
+          --exclude src/spookyhash
+          --exclude src/tailer/drive_tailer.cc
+          --exclude src/third-party
+          --exclude src/ww898
+          --exclude src/yajl
+          --exclude src/yajlpp/drive_json_op.cc
+          --exclude src/yajlpp/drive_json_ptr_walk.cc
+          --exclude src/yajlpp/test_yajlpp.cc
+          --exclude src/yajlpp/test_json_ptr.cc
+          --exclude test
+          --exclude src/data_scanner_re.cc
+          --gcov-options '\-lp'
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Update apt
+        run: sudo apt-get update
+      - name: Install packages
+        run: >-
+          sudo apt-get install -y
+          make
+          automake
+          autoconf
+          g++
+          libncurses-dev
+          libpcre2-dev
+          libsqlite3-dev
+          libbz2-dev
+          libcurl4-openssl-dev
+          libunistring-dev
+          pipx
+          tshark
+          zlib1g-dev
+      - name: Install python packages
+        run: pipx install check-jsonschema
+      - name: ulimit
+        run: ulimit -s
+      - name: autogen
+        run: ./autogen.sh
+      - name: configure
+        run: ./configure --disable-static
+      - name: make
+        run: make -j4
+      - name: make distcheck
+        run: timeout 18m make distcheck -j4 || (test -e lnav-*/_build/sub/src/tailer/test-suite.log && cat lnav-*/_build/sub/src/tailer/test-suite.log && false) || (test -e lnav-*/_build/sub/test/test-suite.log && cat lnav-*/_build/sub/test/test-suite.log && false)
+      - name: Upload a Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          # Artifact name
+          name: lnav-tot-linux-64bit.zip
+          # A file, directory or wildcard pattern that describes what to upload
+          path: src/lnav

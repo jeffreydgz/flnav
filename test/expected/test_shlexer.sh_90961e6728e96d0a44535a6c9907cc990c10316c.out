@@ -1,0 +1,7 @@
+    "def"
+dst ^
+den     ^
+eof     ^
+eval -- "def"
+split:
+  0 ^---^ -- def

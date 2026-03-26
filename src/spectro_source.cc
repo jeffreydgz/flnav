@@ -1,0 +1,771 @@
+/**
+ * Copyright (c) 2020, Timothy Stack
+ *
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice, this
+ * list of conditions and the following disclaimer.
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ * this list of conditions and the following disclaimer in the documentation
+ * and/or other materials provided with the distribution.
+ * * Neither the name of Timothy Stack nor the names of its contributors
+ * may be used to endorse or promote products derived from this software
+ * without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ''AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * @file spectro_source.cc
+ */
+
+#include <optional>
+#include <vector>
+
+#include "spectro_source.hh"
+
+#include "base/ansi_scrubber.hh"
+#include "base/keycodes.hh"
+#include "base/math_util.hh"
+#include "config.h"
+
+using namespace std::chrono_literals;
+
+static constexpr auto TIME_COLUMN_WIDTH = 26;
+static constexpr auto UNUSABLE_WIDTH = TIME_COLUMN_WIDTH + 2;
+static constexpr auto MINIMUM_WIDTH = UNUSABLE_WIDTH + 20;
+
+std::optional<size_t>
+spectrogram_row::nearest_column(size_t current) const
+{
+    std::optional<size_t> retval;
+    std::optional<size_t> nearest_distance;
+
+    for (size_t lpc = 0; lpc < this->sr_width; lpc++) {
+        if (this->sr_values[lpc].rb_counter == 0) {
+            continue;
+        }
+        auto curr_distance = abs_diff(lpc, current);
+
+        if (!retval || curr_distance < nearest_distance.value()) {
+            retval = lpc;
+            nearest_distance = abs_diff(lpc, current);
+        }
+    }
+
+    return retval;
+}
+
+bool
+spectrogram_source::list_input_handle_key(listview_curses& lv,
+                                          const ncinput& ch)
+{
+    switch (ch.eff_text[0]) {
+        case KEY_CTRL('a'): {
+            if (this->ss_value_source != nullptr) {
+                this->ss_cursor_column = 0;
+                this->text_selection_changed((textview_curses&) lv);
+                lv.set_needs_update();
+            }
+            return true;
+        }
+
+        case KEY_CTRL('e'): {
+            if (this->ss_value_source != nullptr) {
+                this->ss_cursor_column = INT_MAX;
+                this->text_selection_changed((textview_curses&) lv);
+                lv.set_needs_update();
+            }
+            return true;
+        }
+
+        case NCKEY_LEFT:
+        case NCKEY_RIGHT: {
+            auto sel = lv.get_selection();
+            string_attrs_t sa;
+            this->chart_attrs_for_line(
+                (textview_curses&) lv, sel.value_or(0_vl), sa);
+
+            if (sa.empty()) {
+                this->reset_details_source();
+                this->ss_cursor_column = std::nullopt;
+                return true;
+            }
+
+            if (!this->ss_cursor_column) {
+                auto old_sel = lv.get_selection().value_or(0_vl);
+                lv.set_selection(-1_vl);
+                lv.set_selection(old_sel);
+            }
+            line_range lr(
+                TIME_COLUMN_WIDTH + this->ss_cursor_column.value(),
+                TIME_COLUMN_WIDTH + this->ss_cursor_column.value() + 1);
+
+            auto current = find_string_attr(sa, lr);
+
+            if (current != sa.end()) {
+                if (ch.id == NCKEY_LEFT) {
+                    if (current == sa.begin()) {
+                        current = sa.end();
+                    } else {
+                        --current;
+                    }
+                } else {
+                    ++current;
+                }
+            }
+
+            if (current == sa.end()) {
+                if (ch.id == NCKEY_LEFT) {
+                    current = sa.end();
+                    --current;
+                } else {
+                    current = sa.begin();
+                }
+            }
+            this->ss_cursor_column
+                = current->sa_range.lr_start - TIME_COLUMN_WIDTH;
+            this->reset_details_source();
+
+            lv.reload_data();
+
+            return true;
+        }
+        default:
+            return false;
+    }
+}
+
+bool
+spectrogram_source::text_handle_mouse(
+    textview_curses& tc,
+    const listview_curses::display_line_content_t&,
+    mouse_event& me)
+{
+    auto sel = tc.get_selection();
+    if (!sel || me.me_state != mouse_button_state_t::BUTTON_STATE_RELEASED) {
+        return false;
+    }
+    const auto& s_row = this->load_row(tc, sel.value());
+    std::optional<size_t> closest_column;
+    int closest_distance = INT_MAX;
+
+    for (int lpc = 0; lpc <= (int) s_row.sr_width; lpc++) {
+        int col_value = s_row.sr_values[lpc].rb_counter;
+
+        if (col_value == 0) {
+            continue;
+        }
+
+        auto distance = std::abs(me.me_x - (TIME_COLUMN_WIDTH + lpc));
+        if (distance < closest_distance) {
+            closest_distance = distance;
+            closest_column = lpc;
+        }
+    }
+
+    if (closest_column) {
+        this->ss_cursor_column = closest_column;
+        this->reset_details_source();
+        tc.reload_data();
+        return true;
+    }
+    return false;
+}
+
+void
+spectrogram_source::list_value_for_overlay(const listview_curses& lv,
+                                           vis_line_t row,
+                                           std::vector<attr_line_t>& value_out)
+{
+    auto [height, width] = lv.get_dimensions();
+    width -= UNUSABLE_WIDTH;
+
+    const auto sel = lv.get_selection();
+    if (sel && row == sel.value() && this->ss_cursor_column) {
+        auto hash = hasher();
+        hash.update(this->ss_cursor_column.value());
+        hash.update(width);
+        hash.update(sel.value());
+        auto checksum = hash.to_array();
+
+        if (checksum == this->ss_cursor_details_checksum) {
+            value_out.push_back(this->ss_cursor_details);
+            return;
+        }
+
+        const auto& s_row = this->load_row(lv, sel.value());
+        const auto& bucket = s_row.sr_values[this->ss_cursor_column.value()];
+        auto& sb = this->ss_cached_bounds;
+        spectrogram_request sr(sb);
+        attr_line_t retval;
+
+        auto sel_time = rounddown(sb.sb_begin_time, this->ss_granularity)
+            + (sel.value() * this->ss_granularity);
+        sr.sr_width = width;
+        sr.sr_begin_time = sel_time;
+        sr.sr_end_time = sel_time + this->ss_granularity;
+        sr.sr_column_size = (sb.sb_max_value_out - sb.sb_min_value_out)
+            / (double) (width - 1);
+        auto range_min = sb.sb_min_value_out
+            + this->ss_cursor_column.value() * sr.sr_column_size;
+        auto range_max = range_min + sr.sr_column_size;
+
+        auto range_min_str
+            = s_row.sr_value_type == spectrogram_row::value_type::real
+            ? fmt::format(FMT_STRING("{:.2Lf}"), range_min)
+            : fmt::format(FMT_STRING("{:L}"), ceil(range_min));
+        auto range_max_str
+            = s_row.sr_value_type == spectrogram_row::value_type::real
+            ? fmt::format(FMT_STRING("{:.2Lf}"), range_max)
+            : fmt::format(FMT_STRING("{:L}"), floor(range_max));
+
+        auto desc
+            = attr_line_t()
+                  .append(lnav::roles::number(
+                      fmt::format(FMT_STRING("{:L}"), bucket.rb_counter)))
+                  .append(fmt::format(FMT_STRING(" value{} in the range "),
+                                      bucket.rb_counter == 1 ? "" : "s"))
+                  .append(lnav::roles::number(range_min_str))
+                  .append("-")
+                  .append(lnav::roles::number(range_max_str))
+                  .append(" ");
+        auto mark_offset = TIME_COLUMN_WIDTH + this->ss_cursor_column.value();
+        auto mark_is_before = true;
+
+        if (desc.length() + 8 > (ssize_t) width) {
+            desc.clear();
+        }
+
+        if (this->ss_cursor_column.value() + desc.length() + 1 > width) {
+            mark_offset -= desc.length();
+            mark_is_before = false;
+        }
+        retval.append(mark_offset, ' ');
+        if (mark_is_before) {
+            retval.append("\u25b2 ");
+        }
+        retval.append(desc);
+        if (!mark_is_before) {
+            retval.append("\u25b2 ");
+        }
+        retval.with_attr_for_all(VC_ROLE.value(role_t::VCR_CURSOR_LINE));
+
+        if (this->ss_details_view != nullptr) {
+            if (s_row.sr_details_source_provider) {
+                auto row_details_source = s_row.sr_details_source_provider(
+                    sr, range_min, range_max);
+
+                this->ss_details_view->set_sub_source(row_details_source.get());
+                this->ss_details_source = std::move(row_details_source);
+                auto* overlay_source = dynamic_cast<list_overlay_source*>(
+                    this->ss_details_source.get());
+                if (overlay_source != nullptr) {
+                    this->ss_details_view->set_overlay_source(overlay_source);
+                }
+            } else {
+                this->ss_details_view->set_sub_source(
+                    this->ss_no_details_source);
+                this->ss_details_view->set_overlay_source(nullptr);
+            }
+        }
+
+        this->ss_cursor_details = retval;
+        this->ss_cursor_details_checksum = checksum;
+        value_out.emplace_back(retval);
+    }
+}
+
+size_t
+spectrogram_source::text_line_count()
+{
+    if (this->ss_value_source == nullptr) {
+        return 0;
+    }
+
+    this->cache_bounds();
+
+    return this->ss_cached_line_count;
+}
+
+size_t
+spectrogram_source::text_line_width(textview_curses& tc)
+{
+    if (tc.get_window() == nullptr) {
+        return 80;
+    }
+
+    unsigned long width;
+    vis_line_t height;
+
+    tc.get_dimensions(height, width);
+    return width;
+}
+
+std::optional<text_time_translator::row_info>
+spectrogram_source::time_for_row(vis_line_t row)
+{
+    if (this->ss_details_source != nullptr) {
+        auto* details_tss = dynamic_cast<text_time_translator*>(
+            this->ss_details_source.get());
+
+        if (details_tss != nullptr) {
+            return details_tss->time_for_row(this->ss_details_view->get_top());
+        }
+    }
+
+    return this->time_for_row_int(row);
+}
+
+std::optional<text_time_translator::row_info>
+spectrogram_source::time_for_row_int(vis_line_t row)
+{
+    auto retval = timeval{0, 0};
+
+    this->cache_bounds();
+    retval.tv_sec = to_time_t(
+        rounddown(this->ss_cached_bounds.sb_begin_time, this->ss_granularity)
+        + row * this->ss_granularity);
+
+    return row_info{retval, row};
+}
+
+std::optional<vis_line_t>
+spectrogram_source::row_for_time(timeval time_bucket)
+{
+    if (this->ss_value_source == nullptr) {
+        return std::nullopt;
+    }
+
+    this->cache_bounds();
+    const auto tb_us = to_us(time_bucket);
+    const auto grain_begin_time
+        = rounddown(this->ss_cached_bounds.sb_begin_time, this->ss_granularity);
+    if (tb_us < grain_begin_time) {
+        return 0_vl;
+    }
+
+    const auto diff = tb_us - grain_begin_time;
+    const auto retval = diff / this->ss_granularity;
+
+    return vis_line_t(retval);
+}
+
+line_info
+spectrogram_source::text_value_for_line(textview_curses& tc,
+                                        int row,
+                                        std::string& value_out,
+                                        line_flags_t flags)
+{
+    if (tc.get_dimensions().second < MINIMUM_WIDTH) {
+        return {};
+    }
+
+    const auto& s_row = this->load_row(tc, row);
+    char tm_buffer[128];
+    tm tm;
+
+    auto row_time_opt = this->time_for_row_int(vis_line_t(row));
+    if (!row_time_opt) {
+        value_out.clear();
+        return {};
+    }
+    auto ri = row_time_opt.value();
+
+    gmtime_r(&ri.ri_time.tv_sec, &tm);
+    strftime(tm_buffer, sizeof(tm_buffer), " %a %b %d %H:%M:%S %Y", &tm);
+
+    value_out = tm_buffer;
+    value_out.resize(TIME_COLUMN_WIDTH + s_row.sr_width, ' ');
+
+    for (size_t lpc = 0; lpc <= s_row.sr_width; lpc++) {
+        if (s_row.sr_values[lpc].rb_marks) {
+            value_out[TIME_COLUMN_WIDTH + lpc] = 'x';
+        }
+    }
+
+    return {};
+}
+
+void
+spectrogram_source::chart_attrs_for_line(textview_curses& tc,
+                                         int row,
+                                         string_attrs_t& value_out)
+{
+    const auto& s_row = this->load_row(tc, row);
+
+    for (int lpc = 0; lpc <= (int) s_row.sr_width; lpc++) {
+        int col_value = s_row.sr_values[lpc].rb_counter;
+
+        if (col_value == 0) {
+            continue;
+        }
+
+        auto role = lnav::enums::to_underlying(role_t::VCR_SPECTRO_THRESHOLD0);
+        auto t_iter = std::lower_bound(std::begin(s_row.sr_thresholds),
+                                       std::end(s_row.sr_thresholds),
+                                       col_value);
+        auto dist = std::distance(std::begin(s_row.sr_thresholds), t_iter);
+        role += dist;
+        ensure(role < (int) role_t::VCR__MAX);
+        auto lr
+            = line_range{TIME_COLUMN_WIDTH + lpc, TIME_COLUMN_WIDTH + lpc + 1};
+        value_out.emplace_back(lr, VC_ROLE.value(role_t{role}));
+    }
+}
+
+void
+spectrogram_source::text_mark(const bookmark_type_t* bm,
+                              vis_line_t line,
+                              bool added)
+{
+    if (bm != &textview_curses::BM_USER) {
+        return;
+    }
+
+    if (line < 0 || (size_t) line >= this->text_line_count()
+        || !this->ss_cursor_column || this->ss_value_source == nullptr)
+    {
+        alerter::singleton().chime(
+            "a value must be selected before it can be marked");
+        return;
+    }
+
+    auto [height, width] = this->tss_view->get_dimensions();
+    width -= UNUSABLE_WIDTH;
+
+    const auto& s_row = this->load_row(*this->tss_view, line);
+    auto& sb = this->ss_cached_bounds;
+    auto begin_time_opt = this->time_for_row_int(line);
+    if (!begin_time_opt) {
+        return;
+    }
+    auto begin_time = begin_time_opt.value();
+    auto end_time = to_us(begin_time.ri_time);
+
+    end_time += this->ss_granularity;
+
+    double column_size
+        = (sb.sb_max_value_out - sb.sb_min_value_out) / (double) (width - 1);
+    double range_min = sb.sb_min_value_out
+        + this->ss_cursor_column.value_or(0) * column_size;
+    double range_max = range_min + column_size;
+    auto mark_op = spectrogram_value_source::mark_op_t::add;
+    if (this->ss_cursor_column
+        && s_row.sr_values[this->ss_cursor_column.value()].rb_marks > 0)
+    {
+        mark_op = spectrogram_value_source::mark_op_t::clear;
+    }
+    this->ss_value_source->spectro_mark(*this->tss_view,
+                                        to_us(begin_time.ri_time),
+                                        end_time,
+                                        range_min,
+                                        range_max,
+                                        mark_op);
+    auto cursor_col = this->ss_cursor_column;
+    this->invalidate();
+    this->ss_cursor_column = cursor_col;
+    this->text_selection_changed(*this->tss_view);
+}
+
+void
+spectrogram_source::text_attrs_for_line(textview_curses& tc,
+                                        int row,
+                                        string_attrs_t& value_out)
+{
+    if (this->ss_value_source == nullptr) {
+        return;
+    }
+
+    if (tc.get_dimensions().second < MINIMUM_WIDTH) {
+        return;
+    }
+
+    this->chart_attrs_for_line(tc, row, value_out);
+
+    auto alt_row_index = row % 4;
+    if (alt_row_index == 2 || alt_row_index == 3) {
+        value_out.emplace_back(line_range{0, -1},
+                               VC_ROLE.value(role_t::VCR_ALT_ROW));
+    }
+}
+
+void
+spectrogram_source::reset_details_source()
+{
+    if (this->ss_details_view != nullptr) {
+        this->ss_details_view->set_sub_source(this->ss_no_details_source);
+        this->ss_details_view->set_overlay_source(nullptr);
+    }
+    this->ss_details_source.reset();
+    this->ss_cursor_details_checksum.clear();
+}
+
+void
+spectrogram_source::cache_bounds()
+{
+    if (this->ss_value_source == nullptr) {
+        this->ss_cached_bounds.sb_count = 0;
+        this->ss_cached_bounds.sb_begin_time
+            = std::chrono::microseconds::zero();
+        this->ss_cursor_column = std::nullopt;
+        this->reset_details_source();
+        return;
+    }
+
+    spectrogram_bounds sb;
+
+    this->ss_value_source->spectro_bounds(sb);
+
+    if (sb.sb_count == this->ss_cached_bounds.sb_count
+        && sb.sb_mark_generation == this->ss_cached_bounds.sb_mark_generation)
+    {
+        return;
+    }
+
+    this->invalidate();
+    this->ss_cached_bounds = sb;
+
+    if (sb.sb_count == 0) {
+        this->ss_cached_line_count = 0;
+        this->ss_cursor_column = std::nullopt;
+        this->reset_details_source();
+        return;
+    }
+
+    auto [height, width] = this->tss_view->get_dimensions();
+    width -= UNUSABLE_WIDTH;
+    auto grain_begin_time = rounddown(sb.sb_begin_time, this->ss_granularity);
+    auto grain_end_time = roundup_size(sb.sb_end_time, this->ss_granularity);
+
+    auto diff = std::max(1us, grain_end_time - grain_begin_time);
+    this->ss_cached_line_count
+        = (diff + this->ss_granularity - 1us) / this->ss_granularity;
+
+    auto& bm = this->tss_view->get_bookmarks()[&textview_curses::BM_USER];
+    bm.clear();
+    for (auto row = 0_vl; row < this->ss_cached_line_count; row += 1_vl) {
+        spectrogram_request sr(sb);
+
+        sr.sr_width = width;
+        auto row_time = rounddown(sb.sb_begin_time, this->ss_granularity)
+            + row * this->ss_granularity;
+        sr.sr_begin_time = row_time;
+        sr.sr_end_time = row_time + this->ss_granularity;
+
+        sr.sr_column_size = (sb.sb_max_value_out - sb.sb_min_value_out)
+            / (double) (width - 1);
+
+        if (this->ss_value_source->spectro_is_marked(sr)) {
+            bm.insert_once(row);
+        }
+    }
+}
+
+const spectrogram_row&
+spectrogram_source::load_row(const listview_curses& tc, int row)
+{
+    this->cache_bounds();
+
+    auto [height, width] = tc.get_dimensions();
+    width -= UNUSABLE_WIDTH;
+
+    auto& sb = this->ss_cached_bounds;
+    spectrogram_request sr(sb);
+
+    sr.sr_width = width;
+    auto row_time = rounddown(sb.sb_begin_time, this->ss_granularity)
+        + row * this->ss_granularity;
+    sr.sr_begin_time = row_time;
+    sr.sr_end_time = row_time + this->ss_granularity;
+
+    sr.sr_column_size
+        = (sb.sb_max_value_out - sb.sb_min_value_out) / (double) (width - 1);
+
+    auto& s_row = this->ss_row_cache[row_time];
+
+    if (s_row.sr_values.empty() || s_row.sr_width != width
+        || s_row.sr_column_size != sr.sr_column_size)
+    {
+        s_row.sr_width = width;
+        s_row.sr_column_size = sr.sr_column_size;
+        s_row.sr_values.clear();
+        s_row.sr_values.resize(width + 1);
+        s_row.sr_tdigest.reset();
+        this->ss_value_source->spectro_row(sr, s_row);
+
+        s_row.sr_tdigest.reset();
+        for (const auto& val : s_row.sr_values) {
+            if (val.rb_counter == 0) {
+                continue;
+            }
+            s_row.sr_tdigest.insert(val.rb_counter);
+        }
+        s_row.sr_tdigest.merge();
+        auto& st = s_row.sr_thresholds;
+        for (size_t lpc = 0; lpc < 6; lpc++) {
+            auto q = s_row.sr_tdigest.quantile(15.0 * (lpc + 1));
+            log_debug(" q[%f] = %f", 15.0 * (lpc + 1), q);
+            st[lpc] = q;
+        }
+        st[6] = std::numeric_limits<int>::max();
+        for (size_t lpc = 0; lpc < 6; lpc++) {
+            if (st[lpc] < lpc + 1) {
+                st[lpc] = lpc + 1;
+            }
+        }
+        for (const auto& thresh : st) {
+            log_debug(" thresh[] = %d", thresh);
+        }
+    }
+
+    return s_row;
+}
+
+bool
+spectrogram_source::text_is_row_selectable(textview_curses& tc, vis_line_t row)
+{
+    if (this->ss_value_source == nullptr) {
+        return false;
+    }
+
+    const auto& s_row = this->load_row(tc, row);
+    auto nearest_column
+        = s_row.nearest_column(this->ss_cursor_column.value_or(0));
+
+    return nearest_column.has_value();
+}
+
+void
+spectrogram_source::text_selection_changed(textview_curses& tc)
+{
+    if (this->ss_value_source == nullptr || this->text_line_count() == 0) {
+        this->ss_cursor_column = std::nullopt;
+        this->reset_details_source();
+        return;
+    }
+
+    if (!tc.get_selection()) {
+        tc.set_selection(0_vl);
+    }
+    const auto& s_row = this->load_row(tc, tc.get_selection().value());
+    this->ss_cursor_column
+        = s_row.nearest_column(this->ss_cursor_column.value_or(0));
+    this->ss_cursor_details_checksum.clear();
+    this->reset_details_source();
+}
+
+bool
+spectrogram_source::list_static_overlay(const listview_curses& lv,
+                                        media_t media,
+                                        int y,
+                                        int bottom,
+                                        attr_line_t& value_out)
+{
+    if (y != 0) {
+        return false;
+    }
+    auto [height, width] = lv.get_dimensions();
+
+    if (width < MINIMUM_WIDTH) {
+        value_out = lnav::console::user_message::error(
+                        "window is too narrow, not able to show chart")
+                        .to_attr_line();
+        return true;
+    }
+
+    auto& line = value_out.get_string();
+    char buf[128];
+    width -= 2;
+
+    this->cache_bounds();
+
+    if (this->ss_cached_line_count == 0) {
+        value_out
+            .append(lnav::roles::error("error: no data available, use the "))
+            .append_quoted(lnav::roles::keyword(":spectrogram"))
+            .append(lnav::roles::error(" command to visualize numeric data"));
+        return true;
+    }
+
+    auto sel_opt = lv.get_selection();
+    if (!sel_opt) {
+        return false;
+    }
+
+    const auto& s_row = this->load_row(lv, sel_opt.value());
+    const auto& sb = this->ss_cached_bounds;
+    const auto& st = s_row.sr_thresholds;
+
+    line.append(TIME_COLUMN_WIDTH, ' ');
+    snprintf(buf, sizeof(buf), "Min: %'.10lg", sb.sb_min_value_out);
+    line.append(buf);
+
+    snprintf(buf,
+             sizeof(buf),
+             ANSI_ROLE("  ") " 1-%'d " ANSI_ROLE("  ") " %'d-%'d " ANSI_ROLE(
+                 "  ") " %'d+",
+             lnav::enums::to_underlying(role_t::VCR_LOW_THRESHOLD),
+             st[0],
+             lnav::enums::to_underlying(role_t::VCR_MED_THRESHOLD),
+             st[2],
+             st[4],
+             lnav::enums::to_underlying(role_t::VCR_HIGH_THRESHOLD),
+             st[5] + 1);
+    auto buflen = strlen(buf);
+    if (line.length() + buflen + 20 < width) {
+        line.append(width / 2 - buflen / 3 - line.length(), ' ');
+    } else {
+        line.append(" ");
+    }
+    line.append(buf);
+    scrub_ansi_string(line, &value_out.get_attrs());
+
+    snprintf(buf, sizeof(buf), "Max: %'.10lg", sb.sb_max_value_out);
+    buflen = strlen(buf);
+    if (line.length() + buflen + 4 < width) {
+        line.append(width - buflen - line.length() - 2, ' ');
+    } else {
+        line.append(" ");
+    }
+    line.append(buf);
+
+    value_out.with_attr(string_attr(
+        line_range(0, -1), VC_STYLE.value(text_attrs::with_underline())));
+
+    return true;
+}
+
+spectro_status_source::spectro_status_source()
+{
+    this->sss_fields[F_TITLE].set_width(9);
+    this->sss_fields[F_TITLE].set_role(role_t::VCR_STATUS_TITLE);
+    this->sss_fields[F_TITLE].set_value(" Details ");
+
+    this->sss_fields[F_HELP].right_justify(true);
+    this->sss_fields[F_HELP].set_width(20);
+    this->sss_fields[F_HELP].set_value("Press " ANSI_BOLD("TAB") " to focus ");
+    this->sss_fields[F_HELP].set_left_pad(1);
+}
+
+size_t
+spectro_status_source::statusview_fields()
+{
+    return F_MAX;
+}
+
+status_field&
+spectro_status_source::statusview_value_for_field(int field)
+{
+    return this->sss_fields[field];
+}

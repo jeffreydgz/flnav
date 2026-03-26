@@ -1,0 +1,78 @@
+
+LNAV
+----
+
+The log file navigator, lnav, is an enhanced log file viewer that
+takes advantage of any semantic information that can be gleaned from
+the files being viewed, such as timestamps and log levels.  Using this
+extra semantic information, lnav can do things like interleaving
+messages from different files, generate histograms of messages over
+time, and providing hotkeys for navigating through the file.  It is
+hoped that these features will allow the user to quickly and
+efficiently zero in on problems.
+
+
+PREREQUISITES
+-------------
+
+The following software packages are required to build/run lnav:
+
+  gcc/clang - A C++14-compatible compiler.
+  libpcre2  - The Perl Compatible Regular Expression v2 (PCRE2) library.
+  sqlite    - The SQLite database engine.  Version 3.9.0 or higher is required.
+  zlib      - The zlib compression library.
+  bz2       - The bzip2 compression library.
+  re2c      - The re2c scanner generator.
+  libcurl   - The cURL library for downloading files from URLs.  Version
+              7.23.0 or higher is required.
+  libarchive - The libarchive library for opening archive files, like zip/tgz.
+  wireshark - The 'tshark' program is used to interpret pcap files.
+
+
+INSTALLATION
+------------
+
+Lnav follows the usual GNU style for configuring and installing software:
+
+Run "./autogen.sh" if compiling from a cloned repository.
+
+  $ ./configure
+  $ make
+  $ sudo make install
+
+
+USING
+-----
+
+The only file installed is the executable, "lnav".  You can execute it
+with no arguments to view the default set of files:
+
+  $ lnav
+
+You can view all the syslog messages by running:
+
+  $ lnav /var/log/messages*
+
+
+SUPPORT
+-------
+
+The lnav mailing list can be reached at:
+
+  lnav@googlegroups.com
+
+
+ACKNOWLEDGEMENTS
+----------------
+
+The xterm color database was copied from:
+
+  https://jonasjacek.github.io/colors/
+
+
+SEE ALSO
+--------
+
+The lnav website:
+
+  https://lnav.org

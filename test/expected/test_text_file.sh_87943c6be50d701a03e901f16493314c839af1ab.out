@@ -1,0 +1,112 @@
+[32m/**[0m
+[32m * Copyright (c) 2018, Timothy Stack[0m
+[32m *[0m
+[32m * All rights reserved.[0m
+[32m *[0m
+[32m * Redistribution and use in source and binary forms, with or without[0m
+[32m * modification, are permitted provided that the following conditions are met:[0m
+[32m *[0m
+[32m * * Redistributions of source code must retain the above copyright notice, this[0m
+[32m * list of conditions and the following disclaimer.[0m
+[32m * * Redistributions in binary form must reproduce the above copyright notice,[0m
+[32m * this list of conditions and the following disclaimer in the documentation[0m
+[32m * and/or other materials provided with the distribution.[0m
+[32m * * Neither the name of Timothy Stack nor the names of its contributors[0m
+[32m * may be used to endorse or promote products derived from this software[0m
+[32m * without specific prior written permission.[0m
+[32m *[0m
+[32m * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ''AS IS'' AND ANY[0m
+[32m * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED[0m
+[32m * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE[0m
+[32m * DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY[0m
+[32m * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES[0m
+[32m * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;[0m
+[32m * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND[0m
+[32m * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT[0m
+[32m * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS[0m
+[32m * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.[0m
+[32m */[0m
+
+[1m[36m#include[0m <array>
+[1m[36m#include[0m <cctype>
+
+[1m[36m#include[0m [35m"log_level.hh"[0m
+
+[1m[36m#include[0m [35m"base/intern_string.hh"[0m
+[1m[36m#include[0m [35m"base/log_level_enum.hh"[0m
+[1m[36m#include[0m [35m"config.h"[0m
+
+[1m[36mconstexpr[0m std::array<string_fragment, [1mLEVEL__MAX[0m> [4mlevel_names[0m = {
+    [35m"unknown"[0m_frag,
+    [35m"trace"[0m_frag,
+    [35m"debug5"[0m_frag,
+    [35m"debug4"[0m_frag,
+    [35m"debug3"[0m_frag,
+    [35m"debug2"[0m_frag,
+    [35m"debug"[0m_frag,
+    [35m"info"[0m_frag,
+    [35m"stats"[0m_frag,
+    [35m"notice"[0m_frag,
+    [35m"warning"[0m_frag,
+    [35m"error"[0m_frag,
+    [35m"critical"[0m_frag,
+    [35m"fatal"[0m_frag,
+    [35m"invalid"[0m_frag,
+};
+
+log_level_t
+abbrev2level([1m[36mconst[0m [1m[36mchar[0m* levelstr, ssize_t len)
+{
+    [1m[36mif[0m ([4mlen[0m == [1m0[0m || levelstr[[1m0[0m] == [35m'\0'[0m) {
+        [1m[36mreturn[0m [1mLEVEL_UNKNOWN[0m;
+    }
+
+    [1m[36mswitch[0m (toupper(levelstr[[1m0[0m])) {
+        [1m[36mcase[0m [35m'T'[0m:
+            [1m[36mreturn[0m [1mLEVEL_TRACE[0m;
+        [1m[36mcase[0m [35m'D'[0m:
+        [1m[36mcase[0m [35m'V'[0m:
+            [1m[36mif[0m (len > [1m1[0m) {
+                [1m[36mswitch[0m (levelstr[len - [1m1[0m]) {
+                    [1m[36mcase[0m [35m'2'[0m:
+                        [1m[36mreturn[0m [1mLEVEL_DEBUG2[0m;
+                    [1m[36mcase[0m [35m'3'[0m:
+                        [1m[36mreturn[0m [1mLEVEL_DEBUG3[0m;
+                    [1m[36mcase[0m [35m'4'[0m:
+                        [1m[36mreturn[0m [1mLEVEL_DEBUG4[0m;
+                    [1m[36mcase[0m [35m'5'[0m:
+                        [1m[36mreturn[0m [1mLEVEL_DEBUG5[0m;
+                }
+            }
+            [1m[36mreturn[0m [1mLEVEL_DEBUG[0m;
+        [1m[36mcase[0m [35m'I'[0m:
+            [1m[36mif[0m ([4mlen[0m == [1m7[0m && toupper(levelstr[[1m1[0m]) == [35m'N'[0m
+                && toupper(levelstr[[1m2[0m]) == [35m'V'[0m && toupper(levelstr[[1m3[0m]) == [35m'A'[0m
+                && toupper(levelstr[[1m4[0m]) == [35m'L'[0m && toupper(levelstr[[1m5[0m]) == [35m'I'[0m
+                && toupper(levelstr[[1m6[0m]) == [35m'D'[0m)
+            {
+                [1m[36mreturn[0m [1mLEVEL_INVALID[0m;
+            }
+            [1m[36mreturn[0m [1mLEVEL_INFO[0m;
+        [1m[36mcase[0m [35m'S'[0m:
+            [1m[36mreturn[0m [1mLEVEL_STATS[0m;
+        [1m[36mcase[0m [35m'N'[0m:
+            [1m[36mreturn[0m [1mLEVEL_NOTICE[0m;
+        [1m[36mcase[0m [35m'W'[0m:
+            [1m[36mreturn[0m [1mLEVEL_WARNING[0m;
+        [1m[36mcase[0m [35m'E'[0m:
+            [1m[36mreturn[0m [1mLEVEL_ERROR[0m;
+        [1m[36mcase[0m [35m'C'[0m:
+            [1m[36mreturn[0m [1mLEVEL_CRITICAL[0m;
+        [1m[36mcase[0m [35m'F'[0m:
+            [1m[36mreturn[0m [1mLEVEL_FATAL[0m;
+        [1m[36mdefault[0m:
+            [1m[36mreturn[0m [1mLEVEL_UNKNOWN[0m;
+    }
+}
+
+[1m[36mint[0m
+levelcmp([1m[36mconst[0m [1m[36mchar[0m* l1, ssize_t l1_len, [1m[36mconst[0m [1m[36mchar[0m* l2, ssize_t l2_len)
+{
+    [1m[36mreturn[0m abbrev2level(l1, l1_len) - abbrev2level(l2, l2_len);
+}

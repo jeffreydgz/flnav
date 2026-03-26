@@ -1,0 +1,24 @@
+             2013-02-11 06:42:34,311:INFO:com.twisted:Starting factory <twisted.web.server.Site instance at 0x1de9290>
+ key  29:40                               ^---------^                                                                   com.twisted
+word  41:49                                           ^------^                                                          Starting
+ val  41:49                                           ^------^                                                          Starting
+pair  29:49                               ^------------------^                                                          com.twisted:Starting
+ key  50:57                                                    ^-----^                                                  factory
+word  92:94                                                                                              ^^             at
+ key  92:94                                                                                              ^^             at
+ hex  95:104                                                                                                ^-------^   0x1de9290
+ val  95:104                                                                                                ^-------^   0x1de9290
+pair  92:104                                                                                             ^----------^   at 0x1de9290
+ grp  92:104                                                                                             ^----------^   at 0x1de9290
+ val  92:104                                                                                             ^----------^   at 0x1de9290
+pair  50:104                                                   ^----------------------------------------------------^   factory <twisted.web.server.Site instance at 0x1de9290
+msg         :com.twisted:Starting factory <twisted.web.server.Site instance at 0x1de9290>
+format      :com.twisted:# factory <twisted.web.server.Site instance #>
+{
+    "com.twisted": "Starting",
+    "factory": [
+        {
+            "at": "0x1de9290"
+        }
+    ]
+}

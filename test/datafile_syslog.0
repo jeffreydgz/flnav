@@ -1,0 +1,23 @@
+             timstack : TTY=pts/6 ; PWD=/auto/wstimstack/rpms/lbuild/test ; USER=root ; COMMAND=/usr/bin/tail /var/log/messages
+ key   0:0                                                                                                                       
+word   0:8   ^------^                                                                                                            timstack
+ val   0:8   ^------^                                                                                                            timstack
+pair   0:8   ^------^                                                                                                            timstack
+ key  11:14             ^-^                                                                                                      TTY
+ sym  15:20                 ^---^                                                                                                pts/6
+ val  15:20                 ^---^                                                                                                pts/6
+pair  11:20             ^-------^                                                                                                TTY=pts/6
+ key  23:26                         ^-^                                                                                          PWD
+path  27:60                             ^-------------------------------^                                                        /auto/wstimstack/rpms/lbuild/test
+ val  27:60                             ^-------------------------------^                                                        /auto/wstimstack/rpms/lbuild/test
+pair  23:60                         ^-----------------------------------^                                                        PWD=/auto/wstimstack/rpms/lbuild/test
+ key  63:67                                                                 ^--^                                                 USER
+word  68:72                                                                      ^--^                                            root
+ val  68:72                                                                      ^--^                                            root
+pair  63:72                                                                 ^-------^                                            USER=root
+ key  75:82                                                                             ^-----^                                  COMMAND
+path  83:96                                                                                     ^-----------^                    /usr/bin/tail
+wspc  96:97                                                                                                  ^                    
+path  97:114                                                                                                  ^---------------^  /var/log/messages
+ val  83:114                                                                                    ^-----------------------------^  /usr/bin/tail /var/log/messages
+pair  75:114                                                                            ^-------------------------------------^  COMMAND=/usr/bin/tail /var/log/messages

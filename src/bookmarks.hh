@@ -1,0 +1,271 @@
+/**
+ * Copyright (c) 2007-2012, Timothy Stack
+ *
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice, this
+ * list of conditions and the following disclaimer.
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ * this list of conditions and the following disclaimer in the documentation
+ * and/or other materials provided with the distribution.
+ * * Neither the name of Timothy Stack nor the names of its contributors
+ * may be used to endorse or promote products derived from this software
+ * without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ''AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * @file bookmarks.hh
+ */
+
+#ifndef bookmarks_hh
+#define bookmarks_hh
+
+#include <map>
+#include <memory>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
+#include "base/distributed_slice.hh"
+#include "base/intern_string.hh"
+#include "base/lnav_log.hh"
+#include "tlx/container/btree_set.hpp"
+
+struct logmsg_annotations {
+    std::map<std::string, std::string> la_pairs;
+};
+
+struct bookmark_metadata {
+    static std::unordered_set<std::string> KNOWN_TAGS;
+
+    enum class categories : int {
+        any = 0,
+        partition = 0x01,
+        notes = 0x02,
+        opid = 0x04,
+    };
+
+    bool has(categories props) const
+    {
+        if (props == categories::any) {
+            return true;
+        }
+
+        if (props == categories::partition && !this->bm_name.empty()) {
+            return true;
+        }
+
+        if (props == categories::notes
+            && (!this->bm_comment.empty()
+                || !this->bm_annotations.la_pairs.empty()
+                || !this->bm_tags.empty()))
+        {
+            return true;
+        }
+
+        if (props == categories::opid && !this->bm_opid.empty()) {
+            return true;
+        }
+
+        return false;
+    }
+
+    std::string bm_name;
+    std::string bm_opid;
+    std::string bm_comment;
+    logmsg_annotations bm_annotations;
+    std::vector<std::string> bm_tags;
+
+    void add_tag(const std::string& tag);
+
+    bool remove_tag(const std::string& tag);
+
+    bool empty(categories props) const;
+
+    void clear();
+};
+
+/**
+ * @param LineType The type used to store line numbers.  (e.g.
+ *   vis_line_t or content_line_t)
+ *
+ * @note The vector is expected to be sorted.
+ */
+template<typename LineType>
+class bookmark_vector {
+public:
+    using iterator = typename tlx::btree_set<LineType>::iterator;
+    using const_iterator = typename tlx::btree_set<LineType>::const_iterator;
+
+    tlx::btree_set<LineType> bv_tree;
+    size_t bv_generation{0};
+
+    std::size_t size() const { return this->bv_tree.size(); }
+
+    void clear()
+    {
+        this->bv_tree.clear();
+        this->bv_generation += 1;
+    }
+
+    bool empty() const { return this->bv_tree.empty(); }
+
+    /**
+     * Insert a bookmark into this vector, but only if it is not already in the
+     * vector.
+     *
+     * @param vl The line to bookmark.
+     */
+    std::pair<iterator, bool> insert_once(LineType vl)
+    {
+        auto retval = this->bv_tree.insert(vl);
+        if (retval.second) {
+            this->bv_generation += 1;
+        }
+        return retval;
+    }
+
+    bool contains(LineType vl)
+    {
+        return this->bv_tree.find(vl) != this->bv_tree.end();
+    }
+
+    std::pair<iterator, iterator> equal_range(LineType start, LineType stop)
+    {
+        auto lb = this->bv_tree.lower_bound(start);
+
+        if (stop == LineType(-1)) {
+            return std::make_pair(lb, this->bv_tree.end());
+        }
+
+        auto up = this->bv_tree.upper_bound(stop);
+
+        return std::make_pair(lb, up);
+    }
+
+    void erase(LineType vl)
+    {
+        this->bv_tree.erase(vl);
+        this->bv_generation += 1;
+    }
+
+    /**
+     * @param start The value to start the search for the next bookmark.
+     * @return The next bookmark value in the vector or -1 if there are
+     * no more remaining bookmarks.  If the 'start' value is a bookmark,
+     * the next bookmark is returned.  If the 'start' value is not a
+     * bookmark, the next highest value in the vector is returned.
+     */
+    std::optional<LineType> next(LineType start) const;
+
+    /**
+     * @param start The value to start the search for the previous
+     * bookmark.
+     * @return The previous bookmark value in the vector or -1 if there
+     * are no more prior bookmarks.
+     * @see next
+     */
+    std::optional<LineType> prev(LineType start) const;
+};
+
+/**
+ * Dummy type whose instances are used to distinguish between
+ * bookmarks maintained by different source modules.
+ */
+class bookmark_type_t {
+public:
+    using type_container = dist_slice_container<bookmark_type_t>;
+
+    static const type_container& get_all_types();
+
+    static std::optional<const bookmark_type_t*> find_type(
+        const std::string& name);
+
+    static std::vector<string_fragment> get_type_names();
+
+    template<typename T, std::size_t N>
+    constexpr explicit bookmark_type_t(const T (&name)[N])
+        : bt_name(string_fragment::from_const(name))
+    {
+    }
+
+    ~bookmark_type_t() = default;
+
+    bookmark_type_t(const bookmark_type_t&) = delete;
+    bookmark_type_t(bookmark_type_t&&) = delete;
+
+    bookmark_type_t& operator=(const bookmark_type_t&) = delete;
+    bookmark_type_t& operator=(bookmark_type_t&&) = delete;
+
+    const string_fragment& get_name() const { return this->bt_name; }
+
+private:
+    const string_fragment bt_name;
+};
+
+template<typename LineType>
+std::optional<LineType>
+bookmark_vector<LineType>::next(LineType start) const
+{
+    std::optional<LineType> retval;
+
+    require(start >= -1);
+
+    auto ub = this->bv_tree.upper_bound(start);
+    if (ub != this->bv_tree.end()) {
+        retval = *ub;
+    }
+
+    ensure(!retval || start < retval.value());
+
+    return retval;
+}
+
+template<typename LineType>
+std::optional<LineType>
+bookmark_vector<LineType>::prev(LineType start) const
+{
+    std::optional<LineType> retval;
+
+    require(start >= 0);
+
+    auto lb = this->bv_tree.lower_bound(start);
+    if (lb != this->bv_tree.begin()) {
+        --lb;
+        retval = *lb;
+    }
+
+    ensure(!retval || retval.value() < start);
+
+    return retval;
+}
+
+/**
+ * Map of bookmark types to bookmark vectors.
+ */
+template<typename LineType>
+struct bookmarks {
+    using type = bookmark_type_t::type_container::slice_indexed_array<
+        bookmark_vector<LineType>>;
+
+    static type create_array()
+    {
+        return bookmark_type_t::get_all_types()
+            .create_array_indexed_by<bookmark_vector<LineType>>();
+    }
+};
+
+#endif

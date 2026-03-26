@@ -1,0 +1,29 @@
+{
+    "bad_regex_log": {
+        "title": "invalid regex test",
+        "regex": {
+            "std": {
+                "pattern": "^(?<timestamp>\\d+: (?<body>.*)$"
+            },
+            "incomplete-match": {
+                "pattern": "^(?<timestamp>\\d+);"
+            }
+        },
+        "level": {
+            "error": "(foo"
+        },
+        "timestamp-format": [
+            "%i"
+        ],
+        "sample": [
+            {
+                "line": "1428634687123; foo"
+            }
+        ],
+        "highlights": {
+            "foobar": {
+                "pattern": "abc("
+            }
+        }
+    }
+}

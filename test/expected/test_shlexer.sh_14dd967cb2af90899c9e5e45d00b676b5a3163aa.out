@@ -1,0 +1,8 @@
+    ~ foo
+til ^
+wsp  ^
+eof     ^
+eval -- ../test/cfg/test_shlexer.sh foo
+split:
+  0 ^ -- ../test/cfg/test_shlexer.sh
+  1   ^-^ -- foo

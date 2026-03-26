@@ -1,0 +1,36 @@
+             Apr 29 08:13:42 tstack-centos5 dhclient: DHCPDISCOVER on eth0 to 255.255.255.255 port 67 interval 5 (xid=0xd16b79d)
+word  62:64                                                                ^^                                                     to
+ key  62:64                                                                ^^                                                     to
+ipv4  65:80                                                                   ^-------------^                                     255.255.255.255
+ val  65:80                                                                   ^-------------^                                     255.255.255.255
+pair  62:80                                                                ^----------------^                                     to 255.255.255.255
+word  81:85                                                                                   ^--^                                port
+ key  81:85                                                                                   ^--^                                port
+ num  86:88                                                                                        ^^                             67
+ val  86:88                                                                                        ^^                             67
+pair  81:88                                                                                   ^-----^                             port 67
+word  89:97                                                                                           ^------^                    interval
+ key  89:97                                                                                           ^------^                    interval
+ num  98:99                                                                                                    ^                  5
+ val  98:99                                                                                                    ^                  5
+pair  89:99                                                                                           ^--------^                  interval 5
+ key 101:101                                                                                                     ^                
+ key 101:104                                                                                                      ^-^             xid
+ hex 105:114                                                                                                          ^-------^   0xd16b79d
+ val 105:114                                                                                                          ^-------^   0xd16b79d
+pair 101:114                                                                                                      ^-----------^   xid=0xd16b79d
+ grp 101:114                                                                                                      ^-----------^   xid=0xd16b79d
+ val 101:114                                                                                                      ^-----------^   xid=0xd16b79d
+pair 101:114                                                                                                      ^-----------^   xid=0xd16b79d
+msg         :DHCPDISCOVER on eth0 to 255.255.255.255 port 67 interval 5 (xid=0xd16b79d)
+format      :DHCPDISCOVER on eth0 to # port # interval # (#)
+{
+    "to": "255.255.255.255",
+    "port": 67,
+    "interval": 5,
+    "col_0": [
+        {
+            "xid": "0xd16b79d"
+        }
+    ]
+}

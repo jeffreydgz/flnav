@@ -1,0 +1,3 @@
+[1m[31m✘[0m [1m[31merror[0m: invalid regex “[1mabc(def)[0m” from “[1mhttps://regex101.com/r/cvCJNP/1[0m”
+ [1m[31mreason[0m: unsupported regex flavor: “[1mgm[0m”
+[36m =[0m [36mhelp[0m: the supported flavors are: [1mpcre[0m, [1mpcre2[0m

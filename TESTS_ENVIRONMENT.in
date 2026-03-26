@@ -1,0 +1,305 @@
+#! /bin/bash
+
+unset NO_COLOR
+unset XDG_CONFIG_HOME
+
+top_srcdir="@abssrcdir@"
+export top_srcdir
+
+top_srcdir_parent=`dirname ${top_srcdir}`
+export top_srcdir_parent
+
+srcdir="@abssrcdir@/test"
+export srcdir
+
+# The top build directory, derived from the path to this script.
+top_builddir=`dirname $0`
+export top_builddir
+
+builddir=`pwd -P`
+export builddir
+
+LNAV_VERSION=`${top_builddir}/src/lnav-test -V`
+export LNAV_VERSION
+
+prefix="@prefix@"
+export prefix
+
+test_dir="@abssrcdir@/test"
+export test_dir
+
+# Let the tests know whether bzip is supported or not.
+BZIP2_SUPPORT="@BZIP2_SUPPORT@"
+export BZIP2_SUPPORT
+
+BZIP2_CMD="@BZIP2_CMD@"
+export BZIP2_CMD
+
+XZ_CMD="@XZ_CMD@"
+export XZ_CMD
+
+TSHARK_CMD="@TSHARK_CMD@"
+export TSHARK_CMD
+
+LIBARCHIVE_LIBS="@LIBARCHIVE_LIBS@"
+export LIBARCHIVE_LIBS
+
+# The full path of the test case
+test_file=$1
+# The base name of the test case
+test_file_base=`basename $1`
+# The current test number for shell based tests.
+test_num=0
+
+HOME="${top_builddir}/test/cfg/${test_file_base}"
+export HOME
+
+rm -rf "${top_builddir}/test/cfg/${test_file_base}"
+mkdir -p ${HOME}
+
+test_hash=""
+
+lnav_test="${top_builddir}/src/lnav-test"
+export lnav_test
+
+lnav="${top_builddir}/src/lnav"
+export lnav
+
+LNAV_LOG_PATH="${top_builddir}/test/test.log"
+export LNAV_LOG_PATH
+
+SFTP_TEST_URL="@SFTP_TEST_URL@"
+export SFTP_TEST_URL
+
+HAVE_SQLITE3_VALUE_SUBTYPE="@HAVE_SQLITE3_VALUE_SUBTYPE@"
+export HAVE_SQLITE3_VALUE_SUBTYPE
+
+HAVE_SQLITE3_ERROR_OFFSET="@HAVE_SQLITE3_ERROR_OFFSET@"
+export HAVE_SQLITE3_ERROR_OFFSET
+
+export TERM=xterm-256color
+export NO_EXTERNAL_TERMINFO=1
+
+## BEGIN Functions
+
+LAST_TEST=""
+
+LAST_CAP_TEST=""
+
+has_errors=""
+
+ROOT_DIR=`realpath ~root`
+
+#
+# Run a test case and capture its standard out and standard err.
+#
+# Usage: run_test <utility> [<argument> ...]
+#
+# Example:
+#
+#   To run rktimes and capture all of its stdio output:
+#
+#     run_test rktimes -V
+#
+run_test() {
+    printf "%s \033[0;35m=============================================================\033[0m\n" $(date -Iseconds)
+    LAST_TEST=("test: $@")
+    echo "${LAST_TEST[@]}"
+    export test_num=`expr ${test_num} \+ 1`
+    "$@" > ${test_file_base}_${test_num}.tmp 2> ${test_file_base}_${test_num}.err
+}
+
+run_cap_test() {
+    LAST_CAP_TEST=("test: $@")
+    local full_cmd=$(echo "${LAST_CAP_TEST[@]}" | LC_ALL=C sed -e "s;${test_dir};{test_dir};g" -e "s;${top_srcdir};{top_srcdir};g")
+    export test_hash=$(echo "${full_cmd}" | shasum | cut -f 1 -d ' ')
+    echo "${full_cmd}" > ${test_file_base}_${test_hash}.cmd
+    timeout 15s "$@" > ${test_file_base}_${test_hash}.out 2> ${test_file_base}_${test_hash}.err
+    printf "Exit code: $?"
+
+    sed -ibak \
+        -e "s;${prefix}/etc;{prefix}/etc;g" \
+        -e "s;${LNAV_VERSION};{LNAV_VERSION};g" \
+        -e "s;${test_dir};{test_dir};g" \
+        -e "s;${builddir};{test_dir};g" \
+        -e "s;${ROOT_DIR};{root_dir};g" \
+        -e "s;${top_srcdir};{top_srcdir};g" \
+        -e "s;${top_srcdir_parent};{top_srcdir_parent};g" \
+        -e "s;${TMPDIR};{TMPDIR};g" \
+        -e "s;/tmp/;{TMPDIR};g" \
+        -e "s;lnav-user-${UID}-work;lnav-user-{uid}-work;g" \
+        ${test_file_base}_${test_hash}.out
+    echo
+    printf "%s \033[0;35m=============================================================\033[0m\n" $(date -Iseconds)
+    printf '\033[0;35mCommand\033[0m: %s\n' "${full_cmd}"
+    printf '\033[0;32mBEGIN\033[0m %s\n' "${test_file_base}_${test_hash}.out"
+    cat "${test_file_base}_${test_hash}.out"
+    printf '\033[0;32mEND\033[0m   %s\n' "${test_file_base}_${test_hash}.out"
+    if test -f ${srcdir}/expected/${test_file_base}_${test_hash}.out; then
+       diff -w -u \
+           ${srcdir}/expected/${test_file_base}_${test_hash}.out \
+           ${test_file_base}_${test_hash}.out \
+           > ${test_file_base}_${test_hash}.diff
+       if test $? -ne 0; then
+           echo OUT: "${full_cmd}"
+           cat ${test_file_base}_${test_hash}.diff
+           echo "FAIL! EXPECTED OUT DIFF"
+           export has_errors="yes"
+       fi
+    else
+       echo "FAIL! EXPECTED OUT MISSING -- ${srcdir}/expected/${test_file_base}_${test_hash}.out"
+       export has_errors="yes"
+    fi
+
+    sed -ibak -E \
+        -e "s;${prefix}/etc;{prefix}/etc;g" \
+        -e "s;${LNAV_VERSION};{LNAV_VERSION};g" \
+        -e "s;${test_dir};{test_dir};g" \
+        -e "s;${ROOT_DIR};{root_dir};g" \
+        -e "s;${builddir};{builddir};g" \
+        -e "s;${top_srcdir};{top_srcdir};g" \
+        -e "s;${TMPDIR};{TMPDIR};g" \
+        -e "s;/tmp/;{TMPDIR};g" \
+        -e "s;lnav-user-${UID}-work;lnav-user-{uid}-work;g" \
+        -e 's;"errorId":".+";;g' \
+        ${test_file_base}_${test_hash}.err
+    printf '\033[0;31mBEGIN\033[0m %s\n' "${test_file_base}_${test_hash}.err"
+    cat "${test_file_base}_${test_hash}.err"
+    printf '\033[0;31mEND\033[0m   %s\n' "${test_file_base}_${test_hash}.err"
+    if test -f ${srcdir}/expected/${test_file_base}_${test_hash}.err; then
+       diff -w -u ${srcdir}/expected/${test_file_base}_${test_hash}.err \
+           ${test_file_base}_${test_hash}.err \
+           > ${test_file_base}_${test_hash}.err.diff
+       if test $? -ne 0; then
+           echo ERR: "${full_cmd}"
+           cat ${test_file_base}_${test_hash}.err.diff
+           echo "FAIL! EXPECTED ERR DIFF"
+           export has_errors="yes"
+       fi
+    else
+       echo "FAIL! EXPECTED ERR MISSING"
+       export has_errors="yes"
+    fi
+}
+
+#
+# Check the output generated by a run_test() call.
+#
+# Usage: check_output <fail message> {Expected output on stdin}
+#
+# Example:
+#
+#   To check the output of 'rktimes -V' and print out 'Unable to get version?'
+#   if the output doesn't match:
+#
+#     run_test rktimes -V
+#     check_output "Unable to get version?" <<EOF
+#     0.5
+#     EOF
+#
+check_output() {
+    sed -ibak \
+        -e "s;${test_dir};{test_dir};g" \
+        -e "s;${top_srcdir};{top_srcdir};g" \
+        ${test_file_base}_${test_num}.tmp
+    diff -w -u - ${test_file_base}_${test_num}.tmp > ${test_file_base}_${test_num}.diff
+    if test $? -ne 0; then
+        echo "${LAST_TEST[@]}"
+        echo $1
+        cat ${test_file_base}_${test_num}.diff
+	    exit 1
+    fi
+}
+
+check_output_ws() {
+    diff -u - ${test_file_base}_${test_num}.tmp > ${test_file_base}_${test_num}.diff
+    if test $? -ne 0; then
+        echo "${LAST_TEST[@]}"
+        echo $1
+        cat ${test_file_base}_${test_num}.diff
+	    exit 1
+    fi
+}
+
+test_filename() {
+    echo ${test_file_base}_${test_num}.tmp
+}
+
+test_err_filename() {
+    echo ${test_file_base}_${test_num}.err
+}
+
+check_error_output() {
+    sed -ibak \
+        -e "s;${test_dir};{test_dir};g" \
+        -e "s;${top_srcdir};{top_srcdir};g" \
+        ${test_file_base}_${test_num}.err
+    diff -w -u - ${test_file_base}_${test_num}.err \
+        > ${test_file_base}_${test_num}.err.diff
+    if test $? -ne 0; then
+        echo "${LAST_TEST[@]}"
+        echo $1
+        cat ${test_file_base}_${test_num}.err.diff
+        exit 1
+    fi
+}
+
+#
+# Grep for a string in the output generated by a run_test() call.
+#
+# Usage: grep_output_for <string> <fail message>
+#
+# Example:
+#
+#   To check the output of 'cbhey -l' for 'IDL:Foobar:1.0' and print out
+#   'Unable to list supported interfaces?' if it is not found:
+#
+#     run_test cbhey -l
+#     grep_output_for "IDL:Foobar:1.0" "Unable to list supported interface?"
+#
+grep_output_for() {
+    if grep -q $1 ${test_file_base}_${test_num}.tmp > /dev/null 2>&1; then
+	:
+    else
+	echo "${test_file_base}_${test_num}.tmp: $2"
+	exit 1
+    fi
+}
+
+on_error_log() {
+  if test $? -ne 0; then
+    echo $1 > /dev/stderr
+    cat ${test_file_base}_${test_num}.tmp
+    cat ${test_file_base}_${test_num}.err
+  fi
+}
+
+on_error_fail_with() {
+    if test $? -ne 0; then
+	echo $1 > /dev/stderr
+	cat ${test_file_base}_${test_num}.tmp
+	cat ${test_file_base}_${test_num}.err
+	exit 1
+    fi
+}
+
+## END Functions
+
+
+# Finally, run the test...
+
+if test -x $1 && test `basename $1 .sh` == `basename $1`; then
+    exec $*
+else
+    # Shell script
+    shift
+    . ${test_file}
+fi
+
+cleanup() {
+  if test "${has_errors}"x = "yes"x; then
+    exit 1
+  fi
+}
+
+trap "cleanup" EXIT
