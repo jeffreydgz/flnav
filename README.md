@@ -1,218 +1,125 @@
-<!-- This is a comment for testing purposes -->
+# nlnav — The Logfile Navigator (custom fork)
 
-[![Build](https://github.com/tstack/lnav/workflows/ci-build/badge.svg)](https://github.com/tstack/lnav/actions?query=workflow%3Aci-build)
-[![Docs](https://readthedocs.org/projects/lnav/badge/?version=latest&style=plastic)](https://docs.lnav.org)
-[![Coverage Status](https://coveralls.io/repos/github/tstack/lnav/badge.svg?branch=master)](https://coveralls.io/github/tstack/lnav?branch=master)
-[![lnav](https://snapcraft.io/lnav/badge.svg)](https://snapcraft.io/lnav)
-[![Gurubase](https://img.shields.io/badge/Gurubase-Ask%20LNAV%20Guru-006BFF)](https://gurubase.io/g/lnav)
+A fork of [lnav](https://lnav.org) with added features for log analysis and security investigation.
 
-[<img src="https://assets-global.website-files.com/6257adef93867e50d84d30e2/62594fddd654fc29fcc07359_cb48d2a8d4991281d7a6a95d2f58195e.svg" height="20" alt="Discord Logo"/>](https://discord.gg/erBPnKwz7R)
+---
 
-_This is the source repository for **lnav**, visit [https://lnav.org](https://lnav.org) for a high level overview._
+## Added Features
 
-# LNAV -- The Logfile Navigator
+### Timestamp Normalization
 
-The Logfile Navigator is a log file viewer for the terminal.  Given a
-set of files/directories, **lnav** will:
+Normalize all displayed log timestamps to UTC `YYYY-MM-DD HH:MM:SS[.sss]` format, regardless of the original timezone or format in the file.
+
+| Interface | How to use |
+|---|---|
+| Key | Press `y` to toggle on/off |
+| Command | `:normalize-timestamps [on\|off]` |
+| SQL | `SELECT normalize_ts('2024-03-25T10:30:00-05:00')` → `2024-03-25 15:30:00` |
+
+Useful when comparing logs from machines in different timezones or with mixed timestamp formats (e.g. syslog + ISO 8601 in the same file).
+
+---
+
+### SSH Traffic Flow Map
+
+Press `0` to open an SSH statistics panel built from the currently loaded log files.
+
+| Interface | How to use |
+|---|---|
+| Key | Press `0` to toggle the panel |
+| Command | `:ssh-stats` |
+
+The panel shows three sections:
+
+1. **SSH Traffic Flow Map** — per-source-IP flow table with destination, outcome, authenticated user(s), and auth method (e.g. `public key`, `SSSD (LDAP/AD)`, `Kerberos/GSSAPI`, `MFA/Duo`, etc.)
+2. **SSH Event Summary** — counts of accepted, failed, invalid-user, disconnected, and other event types
+3. **IP Address Frequency** — all IPs extracted from logs, split into **Public** and **Private** sub-groups
+
+Supports both BSD syslog (`Mar 25 HH:MM:SS host sshd[pid]: ...`) and ISO syslog (`2026-03-25T13:03:20+00:00 host sshd[pid]: ...`) formats.
+
+---
+
+### IOC Highlighting (`--ioc`)
+
+Flag known malicious IPs from a threat-intel file and have them highlighted in both the log view and SSH stats panel.
+
+```console
+$ lnav --ioc /path/to/ioc.txt /var/log/auth.log
+```
+
+The IOC file is plain text — one or more IPv4 addresses per line, `#` comments supported. Matching IPs are highlighted with a dark background (`#2e3440`) in the log view and in the SSH flow/IP-frequency tables.
+
+---
+
+## What lnav Does
+
+Given a set of files or directories, **lnav** will:
 
 - decompress as needed;
 - detect their format;
 - merge the files by time into a single view;
 - tail the files, follow renames, find new files in directories;
 - build an index of errors and warnings;
-- [pretty-print JSON-lines](https://docs.lnav.org/en/latest/formats.html#json-lines).
+- pretty-print JSON-lines.
 
-Then, in the **lnav** TUI, you can:
+Then, in the TUI, you can:
 
-- jump quickly to the previous/next error ([press `e`/`E`](https://docs.lnav.org/en/latest/hotkeys.html#spatial-navigation));
-- search using regular expressions ([press `/`](https://docs.lnav.org/en/latest/hotkeys.html#spatial-navigation));
-- highlight text with a regular expression ([`:highlight`](https://docs.lnav.org/en/latest/commands.html#highlight-pattern) command);
-- filter messages using [regular expressions](https://docs.lnav.org/en/latest/usage.html#regular-expression-match) or [SQLite expressions](https://docs.lnav.org/en/latest/usage.html#sqlite-expression);
-- pretty-print structured text ([press `P`](https://docs.lnav.org/en/latest/ui.html#pretty));
-- view a histogram of messages over time ([press `i`](https://docs.lnav.org/en/latest/ui.html#hist));
-- analyze messages using SQLite ([press `;`](https://docs.lnav.org/en/latest/sqlext.html))
+- jump quickly to the previous/next error (press `e`/`E`);
+- search using regular expressions (press `/`);
+- highlight text with a regular expression (`:highlight` command);
+- filter messages using regular expressions or SQLite expressions;
+- pretty-print structured text (press `P`);
+- view a histogram of messages over time (press `i`);
+- analyze messages using SQLite (press `;`).
 
 ## Screenshot
 
-The following screenshot shows a mix of syslog and web access log
-files.  Failed requests are shown in red.  Identifiers, like IP
-address and PIDs are semantically highlighted.
-
 [![Screenshot](docs/assets/images/lnav-front-page.png)](docs/assets/images/lnav-front-page.png)
-
-## Why not **just** use `tail`/`grep`/`less`?
-
-The standard Unix utilities are great for processing raw text lines,
-however, they do not understand log messages.  Tail can watch
-multiple files at a time, but it won't display messages in order by
-time and you can't scroll backwards.  Grep will only find matching
-lines, but won't return a full multi-line log message.  Less can only
-display a single file at a time.  Also, none of these basic tools 
-handle compressed files.
-
-## Try online before installing
-
-You can SSH into a demo node to play with lnav before installing.
-
-The "playground" account starts lnav with a couple of log files as
-an example:
-
-[`$ ssh playground@demo.lnav.org`](ssh://playground@demo.lnav.org)
-
-The "tutorial 1" account is an interactive tutorial that can teach 
-you the basics of operation:
-
-[`$ ssh tutorial1@demo.lnav.org`](ssh://tutorial1@demo.lnav.org)
 
 ## Installation
 
-[Download a statically-linked binary for Linux/MacOS/Windows from the release page](https://github.com/tstack/lnav/releases/latest#release-artifacts)
-
-### Brew on MacOS
-
-```console
-$ brew install lnav
-```
-
-## Usage
-
-Simply point **lnav** at the files or directories you want to
-monitor, it will figure out the rest:
-
-```console
-$ lnav /path/to/file1 /path/to/dir ...
-```
-
-The **lnav** TUI will pop up right away and begin indexing the 
-files. Progress is displayed in the "Files" panel at the 
-bottom. Once the indexing has finished, the LOG view will display 
-the log messages that were recognized[^1]. You can then use the 
-usual hotkeys to move around the view (arrow keys or
-`j`/`k`/`h`/`l` to move down/up/left/right).
-
-See the [Usage section](https://docs.lnav.org/en/latest/usage.html)
-of the online documentation for more information.
-
-[^1]: Files that do not contain log messages can be seen in the 
-      TEXT view (reachable by pressing `t`).
-
-### Usage with `systemd-journald`
-
-On systems running `systemd-journald`, you can use `lnav` as the pager:
-
-```
-$ journalctl | lnav
-```
-
-or in follow mode:
-
-```
-$ journalctl -f | lnav
-```
-
-Since `journalctl`'s default output format omits the year, if you are
-viewing logs which span multiple years you will need to change the
-output format to include the year, otherwise `lnav` gets confused:
-
-```
-$ journalctl -o short-iso | lnav
-```
-
-It is also possible to use `journalctl`'s json output format and `lnav`
-will make use of additional fields such as PRIORITY and \_SYSTEMD_UNIT:
-
-```
-$ journalctl -o json | lnav
-```
-
-In case some MESSAGE fields contain special characters such as
-ANSI color codes which are considered as unprintable by journalctl,
-specifying `journalctl`'s `-a` option might be preferable in order
-to output those messages still in a non-binary representation:
-
-```
-$ journalctl -a -o json | lnav
-```
-
-If using systemd v236 or newer, the output fields can be limited to
-the ones actually recognized by `lnav` for increased efficiency:
-
-```
-$ journalctl -o json --output-fields=MESSAGE,PRIORITY,_PID,SYSLOG_IDENTIFIER,_SYSTEMD_UNIT | lnav
-```
-
-If your system has been running for a long time, for increased
-efficiency you may want to limit the number of log lines fed into
-`lnav`, e.g. via `journalctl`'s `-n` or `--since=...` options.
-
-In case of a persistent journal, you may want to limit the number
-of log lines fed into `lnav` via `journalctl`'s `-b` option.
-
-## Support
-
-Please file issues on this repository or use the discussions section.
-The following alternatives are also available:
-
-- [support@lnav.org](mailto:support@lnav.org)
-- [Discord](https://discord.gg/erBPnKwz7R)
-- [Google Groups](https://groups.google.com/g/lnav)
-
-## Links
-
-- [Main Site](https://lnav.org)
-- [**Documentation**](https://docs.lnav.org) on Read the Docs
-- [Internal Architecture](ARCHITECTURE.md)
-
-## Contributing
-
-- [Become a Sponsor on GitHub](https://github.com/sponsors/tstack)
-
-### Building From Source
+### Build from source
 
 #### Prerequisites
 
-The following software packages are required to build lnav:
-
-- gcc/clang    - A C++14-compatible compiler.
-- libpcre2     - The Perl Compatible Regular Expression v2 (PCRE2) library.
-- sqlite       - The SQLite database engine.  Version 3.9.0 or higher is required.
-- zlib         - The zlib compression library.
-- bz2          - The bzip2 compression library.
-- libcurl      - The cURL library for downloading files from URLs.  Version 7.23.0 or higher is required.
-- libarchive   - The libarchive library for opening archive files, like zip/tgz.
-- libunistring - The libunistring library for dealing with unicode.
-- wireshark    - The 'tshark' program is used to interpret pcap files.
-- cargo/rust   - The Rust language is used to build the PRQL compiler.
+- gcc/clang (C++14-compatible)
+- libpcre2
+- sqlite ≥ 3.9.0
+- zlib, bz2
+- libcurl ≥ 7.23.0
+- libarchive
+- libunistring
+- wireshark (`tshark`, for pcap support)
+- cargo/rust (for PRQL compiler)
 
 #### Build
 
-Lnav follows the usual GNU style for configuring and installing software:
-
-Run `./autogen.sh` if compiling from a cloned repository.
-
 ```console
+$ ./autogen.sh    # only needed when building from a git clone
 $ ./configure
 $ make
 $ sudo make install
 ```
 
-## See Also
+## Usage
 
-[Angle-grinder](https://github.com/rcoh/angle-grinder) is a tool to slice and dice log files on the command-line.
-If you're familiar with the SumoLogic query language, you might find this tool more comfortable to work with.
+```console
+$ lnav /path/to/file1 /path/to/dir ...
+$ lnav --ioc /path/to/ioc.txt /var/log/auth.log
+```
 
-## Code Signing Policy
+See the [upstream documentation](https://docs.lnav.org) for full usage details.
 
-Free code signing provided by [SignPath.io](https://about.signpath.io/),
-certificate by [SignPath Foundation](https://signpath.org/).
+### Usage with `systemd-journald`
 
-This program will not transfer any information to other networked systems
-unless specifically requested by the user or the person installing or
-operating it.
+```console
+$ journalctl | lnav
+$ journalctl -f | lnav
+$ journalctl -o short-iso | lnav   # include year in timestamps
+$ journalctl -o json | lnav        # structured fields (PRIORITY, _SYSTEMD_UNIT, etc.)
+```
 
-## Acknowledgements
+## Upstream
 
-Many thanks to:
-
-* GitHub Sponsors
-* Anthropic for including lnav in the Claude for Open Source Program
+This fork is based on [tstack/lnav](https://github.com/tstack/lnav).
+For issues with base lnav functionality, refer to the upstream project.
