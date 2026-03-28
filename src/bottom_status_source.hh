@@ -46,6 +46,7 @@ public:
         BSF_HITS,
         BSF_SEARCH_TERM,
         BSF_LOADING,
+        BSF_PACMAN,
         BSF_HELP,
 
         BSF__MAX
@@ -83,6 +84,8 @@ public:
                         file_ssize_t total,
                         const char* term = "Loading");
 
+    void update_pacman(bool active);
+
 private:
     status_field bss_prompt{1024, role_t::VCR_STATUS};
     status_field bss_error{1024, role_t::VCR_ALERT_STATUS};
@@ -91,6 +94,9 @@ private:
     int bss_hit_spinner{0};
     int bss_load_percent{0};
     bool bss_paused{false};
+    int bss_pacman_tick{0};
+    bool bss_is_loading{false};
+    bool bss_is_searching{false};
 };
 
 #endif

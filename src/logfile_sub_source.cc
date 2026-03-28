@@ -502,17 +502,6 @@ logfile_sub_source::text_value_for_line(textview_curses& tc,
         }
     }
 
-    if (this->lss_normalize_timestamps) {
-        log_debug(
-            "normalize: adjusted_tm=%d time_attr_found=%d "
-            "is_continued=%d fmt_lock=%d fmt_flags=0x%x",
-            adjusted_tm.has_value(),
-            time_attr != this->lss_token_al.al_attrs.end(),
-            (int) this->lss_token_line->is_continued(),
-            format->lf_date_time.dts_fmt_lock,
-            format->lf_timestamp_flags);
-    }
-
     // Normalize timestamps to UTC YYYY-MM-DD HH:MM:SS[.sss] for lines that
     // were not already reformatted by the block above (i.e. plain log lines
     // whose timestamps were left verbatim from the raw log text).

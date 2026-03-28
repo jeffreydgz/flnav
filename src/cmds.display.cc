@@ -245,7 +245,7 @@ com_normalize_timestamps(exec_context& ec,
     }
 
     lss.set_normalize_timestamps(new_state);
-    lnav_data.ld_views[LNV_LOG].set_needs_update();
+    lnav_data.ld_views[LNV_LOG].reload_data();
 
     retval = new_state
         ? "Timestamps normalized to UTC (YYYY-MM-DD HH:MM:SS[.sss])"

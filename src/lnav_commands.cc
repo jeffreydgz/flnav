@@ -2910,6 +2910,14 @@ com_ssh_stats(exec_context& ec,
         return Ok(std::string());
     }
 
+    // If the SSH stats view is already showing, just dismiss it.
+    if (*lnav_data.ld_view_stack.top()
+        == &lnav_data.ld_views[LNV_SSH_STATS])
+    {
+        toggle_view(&lnav_data.ld_views[LNV_SSH_STATS]);
+        return Ok(std::string());
+    }
+
     auto& lss = lnav_data.ld_log_source;
     const size_t line_count = lss.text_line_count();
 
@@ -2949,6 +2957,17 @@ com_ssh_stats(exec_context& ec,
         return line.substr(pos,
                            end == std::string::npos ? std::string::npos
                                                     : end - pos);
+    };
+
+    // Strip a matching pair of surrounding single or double quotes
+    auto strip_quotes = [](std::string s) -> std::string {
+        if (s.size() >= 2
+            && ((s.front() == '\'' && s.back() == '\'')
+                || (s.front() == '"' && s.back() == '"')))
+        {
+            return s.substr(1, s.size() - 2);
+        }
+        return s;
     };
 
     // Extract the syslog hostname by finding the word immediately before
@@ -3062,8 +3081,28 @@ com_ssh_stats(exec_context& ec,
         ++total_ssh_events;
     };
 
+    // Show the panel immediately with a placeholder so the user sees it's working,
+    // and kick off the Pac-Man animation in the bottom bar right away.
+    {
+        attr_line_t placeholder;
+        placeholder.append(" Computing SSH Traffic Flow Map"_h1);
+        lnav_data.ld_ssh_stats_source.replace_with(placeholder);
+        lnav_data.ld_views[LNV_SSH_STATS].reload_data();
+        ensure_view(&lnav_data.ld_views[LNV_SSH_STATS]);
+        lnav_data.ld_bottom_source.update_loading(0, line_count, "SSH Stats");
+        lnav_data.ld_status[LNS_BOTTOM].set_needs_update();
+        lnav_data.ld_status_refresher(lnav::func::op_type::blocking);
+    }
+
     // --- Scan log lines ---
+    static const auto& ui_timer = ui_periodic_timer::singleton();
+    static sig_atomic_t ssh_progress_counter = 0;
     for (size_t vl_idx = 0; vl_idx < line_count; ++vl_idx) {
+        if (ui_timer.time_to_update(ssh_progress_counter)) {
+            lnav_data.ld_bottom_source.update_loading(vl_idx, line_count, "SSH Stats");
+            lnav_data.ld_status[LNS_BOTTOM].set_needs_update();
+            lnav_data.ld_status_refresher(lnav::func::op_type::blocking);
+        }
         auto cl = lss.at(vis_line_t(vl_idx));
         auto line_opt = lss.find_line_with_file(cl);
         if (!line_opt) {
@@ -3089,6 +3128,17 @@ com_ssh_stats(exec_context& ec,
                 || tok_res->tr_token == DT_IPV6_ADDRESS)
             {
                 ip_counts[tok_res->to_string()]++;
+            } else if (tok_res->tr_token == DT_QUOTED_STRING) {
+                auto inner_sf = tok_res->inner_string_fragment();
+                data_scanner inner_ds(inner_sf, false);
+                auto inner_tok = inner_ds.tokenize2();
+                if (inner_tok
+                    && (inner_tok->tr_token == DT_IPV4_ADDRESS
+                        || inner_tok->tr_token == DT_IPV6_ADDRESS)
+                    && inner_tok->tr_capture.length() == inner_sf.length())
+                {
+                    ip_counts[inner_tok->to_string()]++;
+                }
             }
         }
 
@@ -3112,6 +3162,7 @@ com_ssh_stats(exec_context& ec,
                 raw_ip   = extract_word_after(line_str, utmp + " ");
             }
         }
+        raw_ip = strip_quotes(raw_ip);
         auto src_ip = is_ip(raw_ip) ? raw_ip : std::string{};
 
         auto auth = detect_auth_source(line_str);
@@ -3210,6 +3261,7 @@ com_ssh_stats(exec_context& ec,
             continue;
         }
     }
+    lnav_data.ld_bottom_source.update_loading(0, 0);
 
     // Sort flows by source IP, then by outcome, then by dest host
     std::vector<std::pair<FlowKey, size_t>> sorted_flows;
@@ -3492,7 +3544,6 @@ com_ssh_stats(exec_context& ec,
 
     lnav_data.ld_ssh_stats_source.replace_with(report);
     lnav_data.ld_views[LNV_SSH_STATS].reload_data();
-    toggle_view(&lnav_data.ld_views[LNV_SSH_STATS]);
 
     return Ok(std::string());
 }
