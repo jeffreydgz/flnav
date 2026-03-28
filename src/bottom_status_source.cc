@@ -44,6 +44,8 @@ bottom_status_source::bottom_status_source()
     this->bss_fields[BSF_SEARCH_TERM].set_share(1);
     this->bss_fields[BSF_LOADING].set_width(13);
     this->bss_fields[BSF_LOADING].right_justify(true);
+    this->bss_fields[BSF_PACMAN].set_width(0);
+    this->bss_fields[BSF_PACMAN].right_justify(true);
     this->bss_fields[BSF_HELP].set_width(14);
     this->bss_fields[BSF_HELP].set_value("?:View Help "_frag);
     this->bss_fields[BSF_HELP].right_justify(true);
@@ -170,6 +172,7 @@ bottom_status_source::update_hits(textview_curses* tc)
         if (!sf.is_cylon()) {
             sf.set_cylon(true);
         }
+        this->bss_is_searching = true;
         retval = true;
     } else {
         new_role = role_t::VCR_STATUS;
@@ -178,7 +181,9 @@ bottom_status_source::update_hits(textview_curses* tc)
             sf.clear();  // clear cylon style attribute
             retval = true;
         }
+        this->bss_is_searching = false;
     }
+    this->update_pacman(this->bss_is_loading || this->bss_is_searching);
     // this->bss_error.clear();
     sf.set_role(new_role);
     retval = this->update_marks(tc) || retval;
@@ -194,6 +199,9 @@ bottom_status_source::update_loading(file_off_t off,
 
     require_ge(off, 0);
     require_ge(total, off);
+
+    this->bss_is_loading = (total > 0);
+    this->update_pacman(this->bss_is_loading || this->bss_is_searching);
 
     if (total == 0) {
         sf.set_cylon(false);
@@ -229,6 +237,90 @@ bottom_status_source::update_loading(file_off_t off,
             sf.set_value(" %s %2d%% ", term, pct);
         }
     }
+}
+
+void
+bottom_status_source::update_pacman(bool active)
+{
+    // 13 display-cell track — matches the BSF_LOADING field width.
+    static const int TRACK_W = 13;
+
+    auto& sf = this->bss_fields[BSF_PACMAN];
+
+    if (!active) {
+        if (sf.get_width() != 0) {
+            sf.set_width(0);
+            sf.clear();
+            this->bss_pacman_tick = 0;
+        }
+        return;
+    }
+
+    sf.set_width(TRACK_W);
+
+    const int tick = this->bss_pacman_tick++;
+
+    // Bounce pac-man across the track: phase 0..(TRACK_W-1) going right,
+    // then (TRACK_W-1)..0 going left, repeating.
+    const int cycle = (TRACK_W - 1) * 2;  // 24 for TRACK_W=13
+    const int phase = tick % cycle;
+    int pac_pos, dir;
+    if (phase < TRACK_W) {
+        pac_pos = phase;
+        dir = 1;
+    } else {
+        pac_pos = cycle - phase;
+        dir = -1;
+    }
+
+    // Two ghosts trail behind pac-man at fixed distances.
+    const int g1_pos = pac_pos - dir * 3;
+    const int g2_pos = pac_pos - dir * 6;
+    const bool mouth_open = (tick % 2 == 0);
+
+    // Build a string with embedded ANSI colour codes; with_ansi_string()
+    // strips the codes and stores them as VC_STYLE attributes.
+    //
+    // Colour palette:
+    //   \033[33m  yellow  — pac-man body
+    //   \033[1;33m bold+yellow — pac-man (brighter, stands out from pellets)
+    //   \033[31m  red     — ghost 1
+    //   \033[35m  magenta — ghost 2
+    //   \033[37m  white   — dots/pellets ahead
+    //   \033[0m   reset
+    std::string frame;
+    frame.reserve(TRACK_W * 16);
+
+    for (int i = 0; i < TRACK_W; i++) {
+        if (i == pac_pos) {
+            // Pac-man: bold yellow, mouth open (ᗧ / ᗤ) or closed (●)
+            frame += "\033[1;33m";
+            if (mouth_open) {
+                frame += (dir >= 0)
+                    ? "\xE1\x97\xA7"   // ᗧ  U+15E7 — facing right
+                    : "\xE1\x97\xA4";  // ᗤ  U+15E4 — facing left
+            } else {
+                frame += "\xE2\x97\x8F";  // ●  U+25CF — closed mouth
+            }
+            frame += "\033[0m";
+        } else if (i == g1_pos && g1_pos >= 0 && g1_pos < TRACK_W) {
+            frame += "\033[31m\xE1\x97\xA3\033[0m";  // red  ᗣ  U+15E3
+        } else if (i == g2_pos && g2_pos >= 0 && g2_pos < TRACK_W) {
+            frame += "\033[35m\xE1\x97\xA3\033[0m";  // magenta ᗣ
+        } else if ((dir == 1 && i > pac_pos) || (dir == -1 && i < pac_pos)) {
+            // Ahead of pac-man: pellet every 4 cells, otherwise a dot.
+            if (i % 4 == 0) {
+                frame += "\033[33m\xE2\x97\x8F\033[0m";  // yellow ● pellet
+            } else {
+                frame += "\033[37m\xC2\xB7\033[0m";      // white  ·  U+00B7
+            }
+        } else {
+            // Behind pac-man: empty space.
+            frame += ' ';
+        }
+    }
+
+    sf.set_value(frame);
 }
 
 size_t

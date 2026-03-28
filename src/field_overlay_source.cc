@@ -1104,7 +1104,9 @@ field_overlay_source::list_static_overlay(const listview_curses& lv,
                     != this->fos_lss.is_time_offset_enabled()
                 || this->fos_header_has_time_preview
                     != (this->fos_lss.ttt_preview_min_time.has_value()
-                        || this->fos_lss.ttt_preview_max_time.has_value()))
+                        || this->fos_lss.ttt_preview_max_time.has_value())
+                || this->fos_header_normalize_timestamps
+                    != this->fos_lss.get_normalize_timestamps())
             {
                 auto file_and_line_pair
                     = this->fos_lss.find_line_with_file(top);
@@ -1167,6 +1169,8 @@ field_overlay_source::list_static_overlay(const listview_curses& lv,
                     this->fos_header_has_time_preview
                         = (this->fos_lss.ttt_preview_min_time.has_value()
                            || this->fos_lss.ttt_preview_max_time.has_value());
+                    this->fos_header_normalize_timestamps
+                        = this->fos_lss.get_normalize_timestamps();
                 }
             }
         } else {
