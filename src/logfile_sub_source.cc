@@ -1842,7 +1842,7 @@ logfile_sub_source::list_input_handle_key(listview_curses& lv,
         case 'l':
         case 'L':
         case NCKEY_RIGHT:
-            if (this->decrease_line_context()) {
+            if (lv.get_left() == 0 && this->decrease_line_context()) {
                 lv.set_needs_update();
                 return true;
             }
