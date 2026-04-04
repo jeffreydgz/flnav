@@ -112,3 +112,20 @@ vcpkg_installed/
 .secrets
 # Test temporaries
 test_sql_normalize_ts.sh_*
+# Removed from fork
+configure
+release/
+snap/
+snapcraft.yaml
+overlay-ports/
+vcpkg.json
+vcpkg-configuration.json
+donwl.ps1
+CMakePresets.json
+CMakeUserPresets.json.example
+INSTALL
+NEWS.md
+lnav.1
+lnav.cfg
+tools/bin2c
+installer-test-home/
