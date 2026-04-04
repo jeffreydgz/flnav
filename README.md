@@ -51,6 +51,58 @@ The IOC file is plain text — one or more IPv4 addresses per line, `#` comments
 
 ---
 
+### Session Trace
+
+Reconstruct a single actor's activity across all loaded log files.
+
+| Interface | How to use |
+|---|---|
+| Command | `:session-trace <IP or username>` |
+
+Groups matching log lines into sessions using connection boundaries and a 30-minute inactivity timeout. Each session header shows start/end time, duration, source IP, user, and outcome. Press `n`/`N` to jump between sessions.
+
+Tab-completion scans the first 50k lines to suggest IPs and usernames.
+
+---
+
+### Log Gap Detection
+
+Find periods where logging stopped — potential evidence of log tampering, service crashes, or network outages.
+
+| Interface | How to use |
+|---|---|
+| Command | `:log-gaps [threshold]` (default `5m`) |
+| SQL | `SELECT * FROM log_gaps(300)` |
+
+Threshold supports `s`/`m`/`h` suffixes (e.g. `30s`, `10m`, `2h`). Gaps are cross-referenced against other loaded files: if other files were active during a gap, it is marked **suspicious**; otherwise **normal**. Press `n`/`N` to jump between gaps.
+
+The `log_gaps()` SQL table-valued function returns columns: `log_file`, `gap_start`, `gap_end`, `gap_duration_seconds`, `other_files_active`, `severity`.
+
+---
+
+### Parallel File Scanning
+
+Files with a detected log format are now scanned in parallel using worker threads, significantly reducing initial load time for large multi-file datasets. Format detection still runs sequentially (shared state), but once a file's format is known, its index rebuild is dispatched to a thread pool (capped at 8 threads).
+
+---
+
+### Pac-Man Loading Animation
+
+A Pac-Man animation plays in the bottom status bar whenever lnav is loading, indexing, or searching. Pac-Man bounces across a 13-cell track with trailing ghosts, using Unicode characters and ANSI colors.
+
+---
+
+### Performance & Bug Fixes
+
+- Replaced `find()+emplace()` with `try_emplace()` for map merging
+- Cached `get_time()` calls outside hot loops
+- Added `std::is_sorted()` guard before `std::stable_sort()` in the render path
+- Fixed unchecked `.back()` calls on potentially empty containers
+- Fixed pointer arithmetic bug in file identity checks
+- Fixed right-arrow scroll becoming stuck after scrolling back from maximum position
+
+---
+
 ## What lnav Does
 
 Given a set of files or directories, **lnav** will:
