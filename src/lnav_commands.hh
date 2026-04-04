@@ -74,4 +74,6 @@ extern const std::chrono::microseconds ZOOM_LEVELS[ZOOM_COUNT];
 
 extern const std::array<string_fragment, ZOOM_COUNT> lnav_zoom_strings;
 
+void refresh_forensic_views();
+
 #endif

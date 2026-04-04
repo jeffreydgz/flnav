@@ -1184,18 +1184,17 @@ logfile::process_prefix(shared_buffer_ref& sbr,
                  * go back and update everything.
                  */
                 const auto& last_line = this->lf_index.back();
+                const auto last_time
+                    = last_line.get_time<std::chrono::microseconds>();
 
                 require_lt(starting_index_size, this->lf_index.size());
                 for (size_t lpc = 0; lpc < starting_index_size; lpc++) {
+                    this->lf_index[lpc].set_time(last_time);
                     if (this->lf_format->lf_multiline) {
-                        this->lf_index[lpc].set_time(
-                            last_line.get_time<std::chrono::microseconds>());
                         if (this->lf_format->lf_structured) {
                             this->lf_index[lpc].set_ignore(true);
                         }
                     } else {
-                        this->lf_index[lpc].set_time(
-                            last_line.get_time<std::chrono::microseconds>());
                         this->lf_index[lpc].set_level(LEVEL_INVALID);
                     }
                     retval = true;
@@ -1252,15 +1251,16 @@ logfile::process_prefix(shared_buffer_ref& sbr,
             if (!second_to_last.is_ignored() && latest < second_to_last) {
                 if (this->lf_format->lf_time_ordered) {
                     this->lf_out_of_time_order_count += 1;
+                    auto skew_time
+                        = second_to_last
+                              .get_time<std::chrono::microseconds>();
                     for (size_t lpc = prescan_size; lpc < this->lf_index.size();
                          lpc++)
                     {
                         auto& line_to_update = this->lf_index[lpc];
 
                         line_to_update.set_time_skew(true);
-                        line_to_update.set_time(
-                            second_to_last
-                                .get_time<std::chrono::microseconds>());
+                        line_to_update.set_time(skew_time);
                     }
                 } else {
                     retval = true;
@@ -1928,12 +1928,11 @@ logfile::rebuild_index(std::optional<ui_clock::time_point> deadline)
                 this->lf_opids);
 
             for (const auto& opid_pair : sbc.sbc_opids.los_opid_ranges) {
-                auto opid_iter
-                    = writable_opid_map->los_opid_ranges.find(opid_pair.first);
+                auto [opid_iter, inserted]
+                    = writable_opid_map->los_opid_ranges.try_emplace(
+                        opid_pair.first, opid_pair.second);
 
-                if (opid_iter == writable_opid_map->los_opid_ranges.end()) {
-                    writable_opid_map->los_opid_ranges.emplace(opid_pair);
-                } else {
+                if (!inserted) {
                     opid_iter->second |= opid_pair.second;
                 }
             }
@@ -1948,10 +1947,10 @@ logfile::rebuild_index(std::optional<ui_clock::time_point> deadline)
             auto tids = this->lf_thread_ids.writeAccess();
 
             for (const auto& tid_pair : sbc.sbc_tids.ltis_tid_ranges) {
-                auto tid_iter = tids->ltis_tid_ranges.find(tid_pair.first);
-                if (tid_iter == tids->ltis_tid_ranges.end()) {
-                    tids->ltis_tid_ranges.emplace(tid_pair);
-                } else {
+                auto [tid_iter, inserted]
+                    = tids->ltis_tid_ranges.try_emplace(
+                        tid_pair.first, tid_pair.second);
+                if (!inserted) {
                     tid_iter->second |= tid_pair.second;
                 }
             }

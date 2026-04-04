@@ -4,10 +4,9 @@
 [36m | [0m[37m[40m:[0m[1m[36m[40mset-file-timezone[0m[37m[40m bad                  [0m
 [36m =[0m [36mnote[0m: did you mean one of the following?
             [1mAmerica/Bahia_Banderas[0m
-            [1mAsia/Ashkhabad[0m
-            [1mBrazil/DeNoronha[0m
             [1mAmerica/Barbados[0m
             [1mAsia/Baghdad[0m
+            [1mEurope/Belgrade[0m
 [36m =[0m [36mhelp[0m: [4m:[0m[1m[4mset-file-timezone[0m[4m [0m[4mzone[0m[4m [[0m[4mpattern[0m[4m][0m
          ══════════════════════════════════════════════════════════════════════
            Set the timezone to use for log messages that do not include a

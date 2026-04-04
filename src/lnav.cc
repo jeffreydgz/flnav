@@ -111,6 +111,7 @@
 #include "log_data_table.hh"
 #include "log_format_loader.hh"
 #include "log_gutter_source.hh"
+#include "log_gaps_vtab.hh"
 #include "log_stmt_vtab.hh"
 #include "log_vtab_impl.hh"
 #include "logfile.hh"
@@ -1621,13 +1622,9 @@ VALUES ('org.lnav.mouse-support', -1, DATETIME('now', '+1 minute'),
     lnav_data.ld_views[LNV_SPECTRO].tc_cursor_role = std::nullopt;
     lnav_data.ld_views[LNV_SPECTRO].tc_disabled_cursor_role = std::nullopt;
 
-    lnav_data.ld_views[LNV_DB].set_supports_marks(true);
-    lnav_data.ld_views[LNV_HELP].set_supports_marks(true);
-    lnav_data.ld_views[LNV_HISTOGRAM].set_supports_marks(true);
-    lnav_data.ld_views[LNV_LOG].set_supports_marks(true);
-    lnav_data.ld_views[LNV_TEXT].set_supports_marks(true);
-    lnav_data.ld_views[LNV_SCHEMA].set_supports_marks(true);
-    lnav_data.ld_views[LNV_PRETTY].set_supports_marks(true);
+    for (auto& ld_view : lnav_data.ld_views) {
+        ld_view.set_supports_marks(true);
+    }
 
     lnav_data.ld_doc_view.set_title("Documentation");
     lnav_data.ld_doc_view.set_window(lnav_data.ld_window);
@@ -2972,6 +2969,7 @@ main(int argc, char* argv[])
     register_fstat_vtab(lnav_data.ld_db.in());
     lnav::events::register_events_tab(lnav_data.ld_db.in());
     register_log_stmt_vtab(lnav_data.ld_db.in());
+    register_log_gaps_vtab(lnav_data.ld_db.in());
 
 #ifdef HAVE_RUST_DEPS
     {
@@ -3193,7 +3191,7 @@ SELECT tbl_name FROM sqlite_master WHERE sql LIKE 'CREATE VIRTUAL TABLE%'
         app.add_flag("--stop", wait_cb);
 
         auto cmd_appender
-            = [](std::string cmd) { lnav_data.ld_commands.emplace_back(cmd); };
+            = [](std::string cmd) { lnav_data.ld_commands.emplace_back(std::move(cmd)); };
         auto cmd_validator = [&arg_errors](std::string cmd) -> std::string {
             static const auto ARG_SRC
                 = intern_string::lookup("command-line argument");
@@ -3676,8 +3674,21 @@ SELECT tbl_name FROM sqlite_master WHERE sql LIKE 'CREATE VIRTUAL TABLE%'
         .set_tail_space(4_vl);
     lnav_data.ld_views[LNV_TIMELINE].set_selectable(true);
 
+    auto generic_overlay_menu = std::make_shared<text_overlay_menu>();
+
     lnav_data.ld_views[LNV_SSH_STATS]
         .set_sub_source(&lnav_data.ld_ssh_stats_source)
+        .set_overlay_source(generic_overlay_menu.get())
+        .set_word_wrap(false);
+
+    lnav_data.ld_views[LNV_SESSION_TRACE]
+        .set_sub_source(&lnav_data.ld_session_trace_source)
+        .set_overlay_source(generic_overlay_menu.get())
+        .set_word_wrap(false);
+
+    lnav_data.ld_views[LNV_LOG_GAPS]
+        .set_sub_source(&lnav_data.ld_log_gaps_source)
+        .set_overlay_source(generic_overlay_menu.get())
         .set_word_wrap(false);
 
     lnav_data.ld_doc_view.set_sub_source(&lnav_data.ld_doc_source);

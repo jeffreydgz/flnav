@@ -75,6 +75,8 @@ constexpr std::array<string_fragment, LNV__MAX> lnav_view_strings = {
     "spectro"_frag,
     "timeline"_frag,
     "ssh-stats"_frag,
+    "session-trace"_frag,
+    "log-gaps"_frag,
 };
 
 const char* const lnav_view_titles[LNV__MAX] = {
@@ -88,6 +90,8 @@ const char* const lnav_view_titles[LNV__MAX] = {
     "SPECTRO",
     "TIMELINE",
     "SSH",
+    "SESS",
+    "GAPS",
 };
 
 const char* const
@@ -434,11 +438,11 @@ open_pretty_view()
                     vl -= 1_vl;
                     auto prev_cl = lss.at(vl);
                     auto prev_lf = lss.find_file_ptr(prev_cl);
-                    auto prev_ll = lf->begin() + prev_cl;
                     if (prev_lf != lf) {
                         flags = 0;
                         break;
                     }
+                    auto prev_ll = lf->begin() + prev_cl;
                     if (prev_ll->is_message()) {
                         flags = 0;
                         break;
@@ -1936,7 +1940,8 @@ setup_initial_view_stack()
     textview_curses* new_top_view = nullptr;
     if (lnav_data.ld_show_help_view) {
         new_top_view = &lnav_data.ld_views[LNV_HELP];
-    } else if (!lnav_data.ld_exec_context.ec_label_source_stack.back()->empty()
+    } else if (!lnav_data.ld_exec_context.ec_label_source_stack.empty()
+               && !lnav_data.ld_exec_context.ec_label_source_stack.back()->empty()
                && !lnav_data.ld_exec_context.ec_label_source_stack.back()
                        ->is_error()
                && db_generation
@@ -1966,8 +1971,10 @@ setup_initial_view_stack()
 
     text_file_count = lnav_data.ld_text_source.size();
     log_file_count = lnav_data.ld_log_source.file_count();
-    db_generation = lnav_data.ld_exec_context.ec_label_source_stack.back()
-                        ->dls_generation;
+    if (!lnav_data.ld_exec_context.ec_label_source_stack.empty()) {
+        db_generation = lnav_data.ld_exec_context.ec_label_source_stack.back()
+                            ->dls_generation;
+    }
     if (new_top_view != nullptr
         && lnav_data.ld_view_stack.top().value() != new_top_view)
     {

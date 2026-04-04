@@ -87,6 +87,10 @@ public:
     void update_pacman(bool active);
 
 private:
+    void refresh_pacman() {
+        this->update_pacman(this->bss_is_loading || this->bss_is_searching);
+    }
+
     status_field bss_prompt{1024, role_t::VCR_STATUS};
     status_field bss_error{1024, role_t::VCR_ALERT_STATUS};
     status_field bss_line_error{1024, role_t::VCR_ALERT_STATUS};

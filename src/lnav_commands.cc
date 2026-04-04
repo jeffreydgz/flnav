@@ -2921,6 +2921,15 @@ com_ssh_stats(exec_context& ec,
     auto& lss = lnav_data.ld_log_source;
     const size_t line_count = lss.text_line_count();
 
+    // Background color for IOC-matched rows (Nord dark: #2e3440)
+    static const auto IOC_BG = VC_BACKGROUND.value(
+        styling::color_unit::from_rgb(rgb_color{0x2e, 0x34, 0x40}));
+
+    auto is_ioc_ip = [](const std::string& ip) -> bool {
+        return !lnav_data.ld_ioc_ips.empty()
+            && lnav_data.ld_ioc_ips.count(ip) > 0;
+    };
+
     // Flow key: (src_ip, dest_host, outcome, auth_source)
     using FlowKey = std::tuple<std::string, std::string, std::string, std::string>;
     struct FlowRecord {
@@ -3096,7 +3105,7 @@ com_ssh_stats(exec_context& ec,
 
     // --- Scan log lines ---
     static const auto& ui_timer = ui_periodic_timer::singleton();
-    static sig_atomic_t ssh_progress_counter = 0;
+    sig_atomic_t ssh_progress_counter = 0;
     for (size_t vl_idx = 0; vl_idx < line_count; ++vl_idx) {
         if (ui_timer.time_to_update(ssh_progress_counter)) {
             lnav_data.ld_bottom_source.update_loading(vl_idx, line_count, "SSH Stats");
@@ -3272,9 +3281,7 @@ com_ssh_stats(exec_context& ec,
     std::sort(sorted_flows.begin(),
               sorted_flows.end(),
               [](const auto& a, const auto& b) {
-                  return std::get<0>(a.first) < std::get<0>(b.first)
-                      || (std::get<0>(a.first) == std::get<0>(b.first)
-                          && a.first < b.first);
+                  return a.first < b.first;
               });
 
     // Returns true for RFC-1918, loopback, link-local, and IPv6 ULA/loopback
@@ -3434,11 +3441,8 @@ com_ssh_stats(exec_context& ec,
                 .append("  ")
                 .append(pct_str)
                 .append("\n");
-            if (!lnav_data.ld_ioc_ips.empty()
-                && lnav_data.ld_ioc_ips.count(src_ip))
-            {
-                row_line.with_attr_for_all(VC_BACKGROUND.value(
-                    styling::color_unit::from_rgb(rgb_color{0x2e, 0x34, 0x40})));
+            if (is_ioc_ip(src_ip)) {
+                row_line.with_attr_for_all(IOC_BG);
             }
             report.append(row_line);
 
@@ -3483,12 +3487,7 @@ com_ssh_stats(exec_context& ec,
 
         if (!lnav_data.ld_ioc_ips.empty()) {
             size_t ioc_hits = 0;
-            for (const auto& [cnt, ip] : public_ips) {
-                if (lnav_data.ld_ioc_ips.count(ip)) {
-                    ++ioc_hits;
-                }
-            }
-            for (const auto& [cnt, ip] : private_ips) {
+            for (const auto& [ip, cnt] : ip_counts) {
                 if (lnav_data.ld_ioc_ips.count(ip)) {
                     ++ioc_hits;
                 }
@@ -3521,12 +3520,8 @@ com_ssh_stats(exec_context& ec,
                         .append(" ")
                         .append(lnav::roles::number(cnt_str))
                         .append("\n");
-                    if (!lnav_data.ld_ioc_ips.empty()
-                        && lnav_data.ld_ioc_ips.count(ip))
-                    {
-                        ip_line.with_attr_for_all(VC_BACKGROUND.value(
-                            styling::color_unit::from_rgb(
-                                rgb_color{0x2e, 0x34, 0x40})));
+                    if (is_ioc_ip(ip)) {
+                        ip_line.with_attr_for_all(IOC_BG);
                     }
                     report.append(ip_line);
                 }
@@ -3544,6 +3539,800 @@ com_ssh_stats(exec_context& ec,
 
     lnav_data.ld_ssh_stats_source.replace_with(report);
     lnav_data.ld_views[LNV_SSH_STATS].reload_data();
+
+    return Ok(std::string());
+}
+
+// ---------------------------------------------------------------------------
+// Shared helpers for :session-trace and :log-gaps
+// ---------------------------------------------------------------------------
+
+static std::string
+forensic_format_tv(const timeval& tv, time_t local_offset = 0)
+{
+    bool normalize = lnav_data.ld_log_source.get_normalize_timestamps();
+    char buf[64];
+    struct tm tm;
+    if (normalize) {
+        time_t true_utc = tv.tv_sec - local_offset;
+        gmtime_r(&true_utc, &tm);
+        strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm);
+    } else {
+        gmtime_r(&tv.tv_sec, &tm);
+        strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm);
+    }
+    return std::string(buf) + fmt::format(FMT_STRING(".{:06d}"), tv.tv_usec);
+}
+
+static std::string
+forensic_format_duration(int64_t secs)
+{
+    if (secs >= 3600) {
+        return fmt::format(FMT_STRING("{}h {:02d}m {:02d}s"),
+                           secs / 3600, (secs % 3600) / 60, secs % 60);
+    }
+    if (secs >= 60) {
+        return fmt::format(FMT_STRING("{}m {:02d}s"), secs / 60, secs % 60);
+    }
+    return fmt::format(FMT_STRING("{}s"), secs);
+}
+
+// --- session-trace cached state ---
+struct st_trace_line {
+    timeval tv;
+    time_t local_offset{0};
+    std::string filename;
+    std::string text;
+};
+
+struct st_session_info {
+    timeval start_tv;
+    timeval end_tv;
+    time_t local_offset{0};
+    std::string source_ip;
+    std::string user;
+    std::string outcome;
+    std::vector<size_t> line_indices;
+};
+
+static std::string s_session_trace_target;
+static std::vector<st_trace_line> s_session_trace_lines;
+static std::vector<st_session_info> s_session_trace_sessions;
+
+static void
+rebuild_session_trace_report()
+{
+    if (s_session_trace_target.empty() && s_session_trace_sessions.empty()) {
+        return;
+    }
+
+    attr_line_t report;
+    std::vector<vis_line_t> session_header_lines;
+
+    report.append(fmt::format(
+        FMT_STRING(" Session Trace: {} ({} sessions, {} matching lines)"),
+        s_session_trace_target,
+        s_session_trace_sessions.size(),
+        s_session_trace_lines.size()));
+    report.append("\n");
+
+    // Helper: count newlines in the report so far to get current line number
+    auto current_line = [&report]() -> vis_line_t {
+        auto count = std::count(report.al_string.begin(),
+                                report.al_string.end(), '\n');
+        return vis_line_t(static_cast<int>(count));
+    };
+
+    for (size_t si = 0; si < s_session_trace_sessions.size(); ++si) {
+        auto& sess = s_session_trace_sessions[si];
+
+        int64_t duration_sec = sess.end_tv.tv_sec - sess.start_tv.tv_sec;
+        int hours = static_cast<int>(duration_sec / 3600);
+        int mins = static_cast<int>((duration_sec % 3600) / 60);
+        int secs = static_cast<int>(duration_sec % 60);
+
+        report.append("\n");
+        session_header_lines.push_back(current_line());
+        report.append(
+            fmt::format(FMT_STRING("── Session {} ──"), si + 1));
+        report.append("\n");
+        report.append(
+            fmt::format(FMT_STRING("  Start:    {}"),
+                        forensic_format_tv(sess.start_tv, sess.local_offset)));
+        report.append("\n");
+        report.append(
+            fmt::format(FMT_STRING("  End:      {}"),
+                        forensic_format_tv(sess.end_tv, sess.local_offset)));
+        report.append("\n");
+        report.append(
+            fmt::format(FMT_STRING("  Duration: {:02d}:{:02d}:{:02d}"),
+                        hours, mins, secs));
+        report.append("\n");
+        if (!sess.source_ip.empty()) {
+            report.append(
+                fmt::format(FMT_STRING("  Source:   {}"), sess.source_ip));
+            report.append("\n");
+        }
+        if (!sess.user.empty()) {
+            report.append(
+                fmt::format(FMT_STRING("  User:     {}"), sess.user));
+            report.append("\n");
+        }
+        report.append(
+            fmt::format(FMT_STRING("  Outcome:  {}"),
+                        sess.outcome.empty() ? "unknown" : sess.outcome));
+        report.append("\n");
+        report.append(
+            fmt::format(FMT_STRING("  Lines:    {}"),
+                        sess.line_indices.size()));
+        report.append("\n\n");
+
+        for (auto idx : sess.line_indices) {
+            auto& ml = s_session_trace_lines[idx];
+            report.append(
+                fmt::format(FMT_STRING("  [{}] {} | {}"),
+                            forensic_format_tv(ml.tv, ml.local_offset),
+                            ml.filename,
+                            ml.text));
+            report.append("\n");
+        }
+    }
+
+    auto& st_view = lnav_data.ld_views[LNV_SESSION_TRACE];
+    auto saved_top = st_view.get_top();
+    lnav_data.ld_session_trace_source.replace_with(report);
+    st_view.reload_data();
+    st_view.set_top(saved_top);
+
+    // Set BM_SEARCH bookmarks on session headers so n/N jumps between them
+    auto& bm = lnav_data.ld_views[LNV_SESSION_TRACE].get_bookmarks();
+    bm[&textview_curses::BM_SEARCH].clear();
+    for (auto vl : session_header_lines) {
+        bm[&textview_curses::BM_SEARCH].insert_once(vl);
+    }
+}
+
+// --- log-gaps cached state ---
+struct lg_gap_record {
+    std::string filename;
+    timeval gap_start;
+    timeval gap_end;
+    time_t local_offset{0};
+    int64_t duration_secs;
+    bool other_files_active;
+    std::string severity;
+};
+
+static int64_t s_log_gaps_threshold_secs = 0;
+static size_t s_log_gaps_file_count = 0;
+static std::vector<lg_gap_record> s_log_gaps_records;
+
+static void
+rebuild_log_gaps_report()
+{
+    if (s_log_gaps_threshold_secs == 0 && s_log_gaps_records.empty()) {
+        return;
+    }
+
+    attr_line_t report;
+    std::vector<vis_line_t> gap_row_lines;
+
+    report.append(fmt::format(
+        FMT_STRING(" Log Gap Analysis (threshold: {}, {} files, {} gaps found)"),
+        forensic_format_duration(s_log_gaps_threshold_secs),
+        s_log_gaps_file_count,
+        s_log_gaps_records.size()));
+    report.append("\n");
+
+    auto current_line = [&report]() -> vis_line_t {
+        auto count = std::count(report.al_string.begin(),
+                                report.al_string.end(), '\n');
+        return vis_line_t(static_cast<int>(count));
+    };
+
+    if (s_log_gaps_records.empty()) {
+        report.append("\n  No gaps exceeding the threshold were found.\n");
+    } else {
+        size_t suspicious_count = 0;
+        for (auto& g : s_log_gaps_records) {
+            if (g.severity == "suspicious") {
+                ++suspicious_count;
+            }
+        }
+        if (suspicious_count > 0) {
+            report.append(fmt::format(
+                FMT_STRING("\n  {} SUSPICIOUS gaps (other files have "
+                           "entries during gap)\n"),
+                suspicious_count));
+        }
+
+        report.append("\n");
+        report.append(fmt::format(
+            FMT_STRING("  {:<25s} {:<28s} {:<28s} {:<15s} {:<8s} {:<10s}"),
+            "FILE", "GAP START", "GAP END", "DURATION",
+            "XREF", "SEVERITY"));
+        report.append("\n");
+        report.append(
+            fmt::format(FMT_STRING("  {:-<25s} {:-<28s} {:-<28s} "
+                                   "{:-<15s} {:-<8s} {:-<10s}"),
+                        "", "", "", "", "", ""));
+        report.append("\n");
+
+        for (auto& g : s_log_gaps_records) {
+            auto fname = g.filename;
+            if (fname.size() > 24) {
+                fname = "..." + fname.substr(fname.size() - 21);
+            }
+            gap_row_lines.push_back(current_line());
+            report.append(fmt::format(
+                FMT_STRING(
+                    "  {:<25s} {:<28s} {:<28s} {:<15s} {:<8s} {:<10s}"),
+                fname,
+                forensic_format_tv(g.gap_start, g.local_offset),
+                forensic_format_tv(g.gap_end, g.local_offset),
+                forensic_format_duration(g.duration_secs),
+                g.other_files_active ? "YES" : "no",
+                g.severity));
+            report.append("\n");
+        }
+    }
+
+    auto& lg_view = lnav_data.ld_views[LNV_LOG_GAPS];
+    auto saved_top = lg_view.get_top();
+    lnav_data.ld_log_gaps_source.replace_with(report);
+    lg_view.reload_data();
+    lg_view.set_top(saved_top);
+
+    // Set BM_SEARCH bookmarks on gap rows so n/N jumps between them
+    auto& bm = lg_view.get_bookmarks();
+    bm[&textview_curses::BM_SEARCH].clear();
+    for (auto vl : gap_row_lines) {
+        bm[&textview_curses::BM_SEARCH].insert_once(vl);
+    }
+}
+
+void
+refresh_forensic_views()
+{
+    rebuild_session_trace_report();
+    rebuild_log_gaps_report();
+}
+
+// ---------------------------------------------------------------------------
+// :session-trace <IP or username>
+// ---------------------------------------------------------------------------
+static Result<std::string, lnav::console::user_message>
+com_session_trace(exec_context& ec,
+                  std::string cmdline,
+                  std::vector<std::string>& args)
+{
+    std::string retval;
+
+    if (args.empty()) {
+        // Tab-completion: gather IPs and usernames from the log
+        auto& lss = lnav_data.ld_log_source;
+        const size_t line_count = lss.text_line_count();
+        std::set<std::string> suggestions;
+        const size_t max_scan = std::min<size_t>(line_count, 50000);
+
+        for (size_t vl_idx = 0; vl_idx < max_scan; ++vl_idx) {
+            auto cl = lss.at(vis_line_t(vl_idx));
+            auto line_opt = lss.find_line_with_file(cl);
+            if (!line_opt) {
+                continue;
+            }
+            auto& [lf, ll_iter] = *line_opt;
+            auto read_res = lf->read_line(ll_iter);
+            if (read_res.isErr()) {
+                continue;
+            }
+            auto sbr = read_res.unwrap();
+            auto sf = sbr.to_string_fragment();
+
+            data_scanner ds(sf);
+            while (true) {
+                auto tok_res = ds.tokenize2();
+                if (!tok_res) {
+                    break;
+                }
+                if (tok_res->tr_token == DT_IPV4_ADDRESS
+                    || tok_res->tr_token == DT_IPV6_ADDRESS)
+                {
+                    suggestions.insert(tok_res->to_string());
+                }
+            }
+
+            // Extract "user <name>" patterns
+            auto line_str = sf.to_string();
+            static const auto user_re
+                = lnav::pcre2pp::code::from_const(
+                    R"((?:user[= ]|User |for )(\S+))");
+            auto md = user_re.create_match_data();
+            auto inp = string_fragment::from_str(line_str);
+            while (user_re.capture_from(inp)
+                       .into(md)
+                       .matches()
+                       .ignore_error())
+            {
+                auto cap = md[1];
+                if (cap) {
+                    auto u = cap->to_string();
+                    if (u.size() > 1 && u.size() < 64) {
+                        suggestions.insert(u);
+                    }
+                }
+                auto last = md[0];
+                if (last) {
+                    inp = inp.substr(
+                        last->sf_end - inp.sf_begin);
+                } else {
+                    break;
+                }
+            }
+        }
+
+        for (const auto& s : suggestions) {
+            args.emplace_back(s);
+        }
+        return Ok(retval);
+    }
+
+    if (args.size() < 2) {
+        return ec.make_error("expecting an IP address or username");
+    }
+
+    if (ec.ec_dry_run) {
+        return Ok(std::string());
+    }
+
+    // Toggle off if already showing
+    if (*lnav_data.ld_view_stack.top()
+        == &lnav_data.ld_views[LNV_SESSION_TRACE])
+    {
+        toggle_view(&lnav_data.ld_views[LNV_SESSION_TRACE]);
+        return Ok(std::string());
+    }
+
+    const std::string target = remaining_args(cmdline, args);
+    auto& lss = lnav_data.ld_log_source;
+    const size_t line_count = lss.text_line_count();
+
+    // Default session inactivity timeout: 30 minutes
+    static constexpr int64_t SESSION_GAP_US = 30LL * 60 * 1000000;
+
+    s_session_trace_target = target;
+    s_session_trace_lines.clear();
+    s_session_trace_sessions.clear();
+    auto& matching_lines = s_session_trace_lines;
+
+    // Show placeholder
+    {
+        attr_line_t placeholder;
+        placeholder.append(
+            fmt::format(FMT_STRING(" Session Trace: {}"), target));
+        lnav_data.ld_session_trace_source.replace_with(placeholder);
+        lnav_data.ld_views[LNV_SESSION_TRACE].reload_data();
+        ensure_view(&lnav_data.ld_views[LNV_SESSION_TRACE]);
+        lnav_data.ld_bottom_source.update_loading(
+            0, line_count, "Session Trace");
+        lnav_data.ld_status[LNS_BOTTOM].set_needs_update();
+        lnav_data.ld_status_refresher(lnav::func::op_type::blocking);
+    }
+
+    // Scan all log lines for matches
+    static const auto& ui_timer = ui_periodic_timer::singleton();
+    sig_atomic_t progress_counter = 0;
+
+    for (size_t vl_idx = 0; vl_idx < line_count; ++vl_idx) {
+        if (ui_timer.time_to_update(progress_counter)) {
+            lnav_data.ld_bottom_source.update_loading(
+                vl_idx, line_count, "Session Trace");
+            lnav_data.ld_status[LNS_BOTTOM].set_needs_update();
+            lnav_data.ld_status_refresher(lnav::func::op_type::blocking);
+        }
+
+        auto cl = lss.at(vis_line_t(vl_idx));
+        auto line_opt = lss.find_line_with_file(cl);
+        if (!line_opt) {
+            continue;
+        }
+        auto& [lf, ll_iter] = *line_opt;
+        auto read_res = lf->read_line(ll_iter);
+        if (read_res.isErr()) {
+            continue;
+        }
+        auto sbr = read_res.unwrap();
+        auto sf = sbr.to_string_fragment();
+        auto line_str = sf.to_string();
+
+        // Check if this line mentions the target identifier
+        bool matched = false;
+
+        // Check via data_scanner for IP matches
+        {
+            data_scanner ds(sf);
+            while (true) {
+                auto tok_res = ds.tokenize2();
+                if (!tok_res) {
+                    break;
+                }
+                if ((tok_res->tr_token == DT_IPV4_ADDRESS
+                     || tok_res->tr_token == DT_IPV6_ADDRESS)
+                    && tok_res->to_string() == target)
+                {
+                    matched = true;
+                    break;
+                }
+            }
+        }
+
+        // Freetext match (case-insensitive) for usernames
+        if (!matched) {
+            auto it = std::search(
+                line_str.begin(), line_str.end(),
+                target.begin(), target.end(),
+                [](char a, char b) {
+                    return std::tolower(static_cast<unsigned char>(a))
+                        == std::tolower(static_cast<unsigned char>(b));
+                });
+            if (it != line_str.end()) {
+                matched = true;
+            }
+        }
+
+        if (matched) {
+            time_t local_off = 0;
+            auto* fmt = lf->get_format_ptr();
+            if (fmt != nullptr) {
+                local_off = fmt->lf_date_time.dts_local_offset_cache;
+            }
+            matching_lines.push_back({
+                ll_iter->get_timeval(),
+                local_off,
+                lf->get_filename().filename().string(),
+                line_str,
+            });
+        }
+    }
+
+    lnav_data.ld_bottom_source.update_loading(0, 0);
+
+    if (matching_lines.empty()) {
+        lnav_data.ld_session_trace_source.replace_with(
+            attr_line_t().append(fmt::format(
+                FMT_STRING("No log lines found matching '{}'"), target)));
+        lnav_data.ld_views[LNV_SESSION_TRACE].reload_data();
+        return Ok(std::string());
+    }
+
+    // Sort by time
+    std::sort(matching_lines.begin(), matching_lines.end(),
+              [](const st_trace_line& a, const st_trace_line& b) {
+                  return timercmp(&a.tv, &b.tv, <);
+              });
+
+    // Session boundary keywords
+    static const auto session_open_re
+        = lnav::pcre2pp::code::from_const(
+            R"((?i)(?:session opened|connection from|Accepted |new connection|Connected))");
+    static const auto session_close_re
+        = lnav::pcre2pp::code::from_const(
+            R"((?i)(?:session closed|Disconnected from|Disconnecting|Connection closed|closed connection|Remove session))");
+
+    // Group lines into sessions
+    auto& sessions = s_session_trace_sessions;
+    st_session_info current;
+    current.start_tv = matching_lines[0].tv;
+    current.end_tv = matching_lines[0].tv;
+    current.local_offset = matching_lines[0].local_offset;
+    current.line_indices.push_back(0);
+    bool in_session = false;
+
+    // Helper to extract first IP from a line
+    auto extract_ip = [](const std::string& line) -> std::string {
+        auto sf = string_fragment::from_str(line);
+        data_scanner ds(sf);
+        while (true) {
+            auto tok_res = ds.tokenize2();
+            if (!tok_res) {
+                break;
+            }
+            if (tok_res->tr_token == DT_IPV4_ADDRESS
+                || tok_res->tr_token == DT_IPV6_ADDRESS)
+            {
+                return tok_res->to_string();
+            }
+        }
+        return {};
+    };
+
+    // Helper to extract user from a line
+    auto extract_user = [](const std::string& line) -> std::string {
+        static const auto re
+            = lnav::pcre2pp::code::from_const(
+                R"((?:user[= ]|User |for )(\S+))");
+        auto md = re.create_match_data();
+        auto inp = string_fragment::from_str(line);
+        if (re.capture_from(inp).into(md).matches().ignore_error()) {
+            auto cap = md[1];
+            if (cap) {
+                return cap->to_string();
+            }
+        }
+        return {};
+    };
+
+    for (size_t i = 0; i < matching_lines.size(); ++i) {
+        auto& ml = matching_lines[i];
+
+        if (i > 0) {
+            // Check for session boundary or timeout
+            int64_t delta_us
+                = (int64_t(ml.tv.tv_sec) - int64_t(current.end_tv.tv_sec))
+                      * 1000000LL
+                + (int64_t(ml.tv.tv_usec) - int64_t(current.end_tv.tv_usec));
+
+            // Check if previous line was a close event
+            bool prev_closed = false;
+            if (i > 0) {
+                auto prev_sf = string_fragment::from_str(
+                    matching_lines[i - 1].text);
+                prev_closed
+                    = session_close_re.find_in(prev_sf)
+                          .ignore_error()
+                          .has_value();
+            }
+
+            // Check if current line is an open event
+            auto cur_sf = string_fragment::from_str(ml.text);
+            bool cur_opens
+                = session_open_re.find_in(cur_sf)
+                      .ignore_error()
+                      .has_value();
+
+            bool new_session
+                = (prev_closed && cur_opens) || (delta_us > SESSION_GAP_US);
+
+            if (new_session) {
+                // Finalize current session
+                if (!current.source_ip.empty() || !current.user.empty()
+                    || !current.line_indices.empty())
+                {
+                    sessions.push_back(std::move(current));
+                }
+                current = st_session_info{};
+                current.start_tv = ml.tv;
+                current.local_offset = ml.local_offset;
+            }
+        }
+
+        current.end_tv = ml.tv;
+        current.line_indices.push_back(i);
+
+        // Try to extract IP and user from this line
+        if (current.source_ip.empty()) {
+            auto ip = extract_ip(ml.text);
+            if (!ip.empty() && ip != target) {
+                current.source_ip = ip;
+            } else if (!ip.empty()) {
+                current.source_ip = ip;
+            }
+        }
+        if (current.user.empty()) {
+            auto u = extract_user(ml.text);
+            if (!u.empty()) {
+                current.user = u;
+            }
+        }
+
+        // Detect outcome
+        auto cur_sf = string_fragment::from_str(ml.text);
+        if (session_close_re.find_in(cur_sf).ignore_error()) {
+            current.outcome = "closed";
+        }
+        if (session_open_re.find_in(cur_sf).ignore_error()) {
+            if (current.outcome.empty()) {
+                current.outcome = "opened";
+            }
+        }
+    }
+    // Push last session
+    if (!current.line_indices.empty()) {
+        sessions.push_back(std::move(current));
+    }
+
+    rebuild_session_trace_report();
+
+    return Ok(std::string());
+}
+
+// ---------------------------------------------------------------------------
+// :log-gaps [threshold]
+// ---------------------------------------------------------------------------
+static Result<std::string, lnav::console::user_message>
+com_log_gaps(exec_context& ec,
+             std::string cmdline,
+             std::vector<std::string>& args)
+{
+    std::string retval;
+
+    if (args.empty()) {
+        return Ok(retval);
+    }
+
+    if (ec.ec_dry_run) {
+        return Ok(std::string());
+    }
+
+    // Toggle off if already showing
+    if (*lnav_data.ld_view_stack.top()
+        == &lnav_data.ld_views[LNV_LOG_GAPS])
+    {
+        toggle_view(&lnav_data.ld_views[LNV_LOG_GAPS]);
+        return Ok(std::string());
+    }
+
+    // Parse threshold (default 5 minutes = 300 seconds)
+    int64_t threshold_secs = 300;
+    if (args.size() >= 2) {
+        auto arg = args[1];
+        // Support formats: "10m", "600", "1h", "30s"
+        int64_t val = 0;
+        size_t pos = 0;
+        try {
+            val = std::stoll(arg, &pos);
+        } catch (...) {
+            return ec.make_error(
+                "invalid threshold '{}' — use a number with optional "
+                "suffix (s/m/h)",
+                arg);
+        }
+        if (pos < arg.size()) {
+            char suffix = arg[pos];
+            switch (suffix) {
+                case 's':
+                case 'S':
+                    threshold_secs = val;
+                    break;
+                case 'm':
+                case 'M':
+                    threshold_secs = val * 60;
+                    break;
+                case 'h':
+                case 'H':
+                    threshold_secs = val * 3600;
+                    break;
+                default:
+                    return ec.make_error(
+                        "unknown suffix '{}' — use s, m, or h", suffix);
+            }
+        } else {
+            // If suffix looks like minutes (small number), treat as minutes
+            // Otherwise treat as seconds for consistency
+            if (arg.find('m') != std::string::npos
+                || arg.find('M') != std::string::npos)
+            {
+                threshold_secs = val * 60;
+            } else {
+                // Bare number: if <= 120, treat as minutes; else seconds
+                if (val <= 120) {
+                    threshold_secs = val * 60;
+                } else {
+                    threshold_secs = val;
+                }
+            }
+        }
+    }
+
+    // Show placeholder
+    {
+        attr_line_t placeholder;
+        placeholder.append(fmt::format(
+            FMT_STRING(" Analyzing Log Gaps (threshold: {}s)"),
+            threshold_secs));
+        lnav_data.ld_log_gaps_source.replace_with(placeholder);
+        lnav_data.ld_views[LNV_LOG_GAPS].reload_data();
+        ensure_view(&lnav_data.ld_views[LNV_LOG_GAPS]);
+        lnav_data.ld_bottom_source.update_loading(0, 1, "Log Gaps");
+        lnav_data.ld_status[LNS_BOTTOM].set_needs_update();
+        lnav_data.ld_status_refresher(lnav::func::op_type::blocking);
+    }
+
+    s_log_gaps_records.clear();
+    s_log_gaps_threshold_secs = threshold_secs;
+    auto& all_gaps = s_log_gaps_records;
+
+    // Collect per-file line timestamps
+    struct file_info {
+        std::string filename;
+        std::vector<timeval> timestamps;
+        time_t local_offset{0};
+    };
+    std::vector<file_info> files;
+
+    auto& lss = lnav_data.ld_log_source;
+
+    for (auto it = lss.begin(); it != lss.end(); ++it) {
+        auto& ld = *it;
+        if (!ld->is_visible()) {
+            continue;
+        }
+        auto lf = ld->get_file();
+        if (!lf || lf->size() == 0) {
+            continue;
+        }
+
+        file_info fi;
+        fi.filename = lf->get_filename().filename().string();
+        auto* fmt = lf->get_format_ptr();
+        if (fmt != nullptr) {
+            fi.local_offset = fmt->lf_date_time.dts_local_offset_cache;
+        }
+        fi.timestamps.reserve(lf->size());
+        for (auto ll = lf->cbegin(); ll != lf->cend(); ++ll) {
+            fi.timestamps.push_back(ll->get_timeval());
+        }
+        files.push_back(std::move(fi));
+    }
+
+    // For each file, find gaps exceeding threshold
+    for (size_t fi_idx = 0; fi_idx < files.size(); ++fi_idx) {
+        auto& fi = files[fi_idx];
+        for (size_t li = 1; li < fi.timestamps.size(); ++li) {
+            auto& prev_tv = fi.timestamps[li - 1];
+            auto& cur_tv = fi.timestamps[li];
+
+            int64_t delta = (int64_t(cur_tv.tv_sec) - int64_t(prev_tv.tv_sec));
+            if (delta < threshold_secs) {
+                continue;
+            }
+
+            // Check if other files have entries during this gap
+            bool others_active = false;
+            for (size_t oi = 0; oi < files.size(); ++oi) {
+                if (oi == fi_idx) {
+                    continue;
+                }
+                auto& other = files[oi];
+                // Binary search for any timestamp in [prev_tv, cur_tv]
+                auto lb = std::lower_bound(
+                    other.timestamps.begin(), other.timestamps.end(), prev_tv,
+                    [](const timeval& a, const timeval& b) {
+                        return timercmp(&a, &b, <);
+                    });
+                if (lb != other.timestamps.end()
+                    && timercmp(&(*lb), &cur_tv, <))
+                {
+                    others_active = true;
+                    break;
+                }
+            }
+
+            all_gaps.push_back({
+                fi.filename,
+                prev_tv,
+                cur_tv,
+                fi.local_offset,
+                delta,
+                others_active,
+                others_active ? "suspicious" : "normal",
+            });
+        }
+    }
+
+    lnav_data.ld_bottom_source.update_loading(0, 0);
+
+    // Sort by severity (suspicious first), then by duration descending
+    std::sort(all_gaps.begin(), all_gaps.end(),
+              [](const lg_gap_record& a, const lg_gap_record& b) {
+                  if (a.severity != b.severity) {
+                      return a.severity > b.severity;  // "suspicious" > "normal"
+                  }
+                  return a.duration_secs > b.duration_secs;
+              });
+
+    s_log_gaps_file_count = files.size();
+    rebuild_log_gaps_report();
 
     return Ok(std::string());
 }
@@ -4452,6 +5241,36 @@ readline_context::command_t STD_COMMANDS[] = {
                 "Toggle a panel showing SSH event statistics and IP address "
                 "frequency counts extracted from the loaded logs")
             .with_tags({"display"}),
+    },
+    {
+        "session-trace",
+        com_session_trace,
+
+        help_text(":session-trace")
+            .with_summary(
+                "Extract and reconstruct a single actor's session from all "
+                "loaded log files, grouping by connect/disconnect boundaries "
+                "or inactivity timeout")
+            .with_parameter(
+                {"actor",
+                 "The IP address or username to trace across all logs"})
+            .with_tags({"forensics"}),
+    },
+    {
+        "log-gaps",
+        com_log_gaps,
+
+        help_text(":log-gaps")
+            .with_summary(
+                "Detect periods where logging stopped or was potentially "
+                "tampered with by finding gaps in each file's timeline "
+                "and cross-referencing with other loaded files")
+            .with_parameter(
+                help_text(
+                    "threshold",
+                    "Gap threshold with optional suffix s/m/h (default 5m)")
+                    .optional())
+            .with_tags({"forensics"}),
     },
     {
         "spectrogram",

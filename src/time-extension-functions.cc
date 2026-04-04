@@ -282,9 +282,13 @@ sql_normalize_ts(string_fragment ts_str)
     utc_tm.et_nsec = tm.et_nsec;
     utc_tm.et_flags = tm.et_flags;
 
-    // Include milliseconds only when the original timestamp had them.
+    // Preserve the original timestamp's sub-second precision.
     const char* fmt;
-    if (tm.et_flags & ETF_MILLIS_SET) {
+    if (tm.et_flags & ETF_NANOS_SET) {
+        fmt = "%Y-%m-%d %H:%M:%S.%N";
+    } else if (tm.et_flags & ETF_MICROS_SET) {
+        fmt = "%Y-%m-%d %H:%M:%S.%f";
+    } else if (tm.et_flags & ETF_MILLIS_SET) {
         fmt = "%Y-%m-%d %H:%M:%S.%L";
     } else {
         fmt = "%Y-%m-%d %H:%M:%S";

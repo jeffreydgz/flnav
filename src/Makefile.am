@@ -335,6 +335,7 @@ noinst_HEADERS = \
 	log_format_ext.hh \
 	log_format_fwd.hh \
 	log_format_loader.hh \
+	log_gaps_vtab.hh \
 	log_gutter_source.hh \
 	log_level.hh \
 	log_level_re.re \
@@ -546,6 +547,7 @@ libdiag_a_SOURCES = \
 	log_data_table.cc \
 	log_format.cc \
 	log_format_loader.cc \
+	log_gaps_vtab.cc \
 	log_level.cc \
 	log_level_re.cc \
 	log_search_table.cc \

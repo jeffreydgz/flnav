@@ -2893,6 +2893,37 @@ log10(*x*)
 ----
 
 
+.. _log_gaps:
+
+log_gaps(*\[threshold_seconds\]*)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  A table-valued function that detects periods where logging stopped or was potentially tampered with.
+
+  **Parameters**
+    * **threshold_seconds** --- The minimum gap in seconds to report (default 300).
+
+  **Examples**
+    To find gaps longer than 5 minutes:
+
+    .. code-block::  custsqlite
+
+      ;SELECT * FROM log_gaps(300)
+      log_file gap_start gap_end gap_dur⋯seconds other_f⋯_active severity 
+
+    To find only suspicious gaps:
+
+    .. code-block::  custsqlite
+
+      ;SELECT * FROM log_gaps(300) WHERE severity = 'suspicious'
+      log_file gap_start gap_end gap_dur⋯seconds other_f⋯_active severity 
+
+  **See Also**
+    :ref:`log_gaps`, :ref:`session_trace`
+
+----
+
+
 .. _log_msg_line:
 
 log_msg_line()

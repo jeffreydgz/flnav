@@ -150,7 +150,7 @@ run_test ${lnav_test} -n \
 
 check_output "delete from lnav_views table works?" <<EOF
 count(*)
-9
+12
 EOF
 
 
@@ -162,7 +162,7 @@ run_test ${lnav_test} -n \
 
 check_output "insert into lnav_views table works?" <<EOF
 count(*)
-9
+12
 EOF
 
 run_cap_test ${lnav_test} -n \

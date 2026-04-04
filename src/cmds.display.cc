@@ -29,6 +29,7 @@
 
 #include "base/intern_string.hh"
 #include "lnav.hh"
+#include "lnav_commands.hh"
 #include "readline_context.hh"
 #include "timeline_source.hh"
 
@@ -246,6 +247,7 @@ com_normalize_timestamps(exec_context& ec,
 
     lss.set_normalize_timestamps(new_state);
     lnav_data.ld_views[LNV_LOG].reload_data();
+    refresh_forensic_views();
 
     retval = new_state
         ? "Timestamps normalized to UTC (YYYY-MM-DD HH:MM:SS[.sss])"

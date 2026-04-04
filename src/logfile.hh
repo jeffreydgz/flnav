@@ -381,6 +381,11 @@ public:
 
     void reobserve_from(iterator iter);
 
+    logfile_observer* get_logfile_observer() const
+    {
+        return this->lf_logfile_observer;
+    }
+
     void set_logfile_observer(logfile_observer* lo)
     {
         this->lf_logfile_observer = lo;

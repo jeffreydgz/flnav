@@ -1024,6 +1024,22 @@
 ----
 
 
+.. _log_gaps:
+
+:log-gaps *\[threshold\]*
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  Detect periods where logging stopped or was potentially tampered with by finding gaps in each file's timeline and cross-referencing with other loaded files
+
+  **Parameters**
+    * **threshold** --- Gap threshold with optional suffix s/m/h (default 5m)
+
+  **See Also**
+    :ref:`log_gaps`, :ref:`session_trace`
+
+----
+
+
 .. _mark:
 
 :mark
@@ -1466,6 +1482,22 @@
 
       :session :highlight foobar
 
+
+----
+
+
+.. _session_trace:
+
+:session-trace *actor*
+^^^^^^^^^^^^^^^^^^^^^^
+
+  Extract and reconstruct a single actor's session from all loaded log files, grouping by connect/disconnect boundaries or inactivity timeout
+
+  **Parameters**
+    * **actor\*** --- The IP address or username to trace across all logs
+
+  **See Also**
+    :ref:`log_gaps`, :ref:`log_gaps`
 
 ----
 

@@ -33,6 +33,7 @@
 #include <future>
 #include <optional>
 #include <string>
+#include <thread>
 #include <unordered_set>
 #include <vector>
 
@@ -1082,10 +1083,14 @@ logfile_sub_source::rebuild_index(std::optional<ui_clock::time_point> deadline)
                              const auto& left_ld = this->lss_files[left];
                              const auto& right_ld = this->lss_files[right];
 
-                             if (left_ld->get_file_ptr() == nullptr) {
+                             if (left_ld->get_file_ptr() == nullptr
+                                 || left_ld->get_file_ptr()->size() == 0)
+                             {
                                  return true;
                              }
-                             if (right_ld->get_file_ptr() == nullptr) {
+                             if (right_ld->get_file_ptr() == nullptr
+                                 || right_ld->get_file_ptr()->size() == 0)
+                             {
                                  return false;
                              }
 
@@ -1094,8 +1099,91 @@ logfile_sub_source::rebuild_index(std::optional<ui_clock::time_point> deadline)
                          });
     }
 
-    bool time_left = true;
+    // Helper lambda to process the result of a single file's rebuild_index
+    auto process_rebuild_result =
+        [&](logfile_data& ld, logfile* lf,
+            logfile::rebuild_result_t log_rebuild_res) {
+            if (ld.ld_lines_indexed < lf->size()
+                && log_rebuild_res
+                    == logfile::rebuild_result_t::NO_NEW_LINES)
+            {
+                // If the logfile indexing was complete before being added
+                // to us, adjust the rebuild result to look like new lines.
+                log_rebuild_res = logfile::rebuild_result_t::NEW_LINES;
+            }
+            switch (log_rebuild_res) {
+                case logfile::rebuild_result_t::NO_NEW_LINES:
+                    break;
+                case logfile::rebuild_result_t::NEW_LINES:
+                    if (retval == rebuild_result::rr_no_change) {
+                        retval = rebuild_result::rr_appended_lines;
+                    }
+                    log_debug("new lines for %s:%zu",
+                              lf->get_filename_as_string().c_str(),
+                              lf->size());
+                    if (!this->lss_index.empty()
+                        && lf->size() > ld.ld_lines_indexed)
+                    {
+                        auto& new_file_line = (*lf)[ld.ld_lines_indexed];
+                        auto cl = this->lss_index.back().value();
+                        auto* last_indexed_line = this->find_line(cl);
+
+                        if (last_indexed_line == nullptr
+                            || new_file_line
+                                < last_indexed_line->get_timeval())
+                        {
+                            log_debug(
+                                "%s:%ld: found older lines, full "
+                                "rebuild: %p  %lld < %lld",
+                                lf->get_filename().c_str(),
+                                ld.ld_lines_indexed,
+                                last_indexed_line,
+                                new_file_line
+                                    .get_time<std::chrono::microseconds>()
+                                    .count(),
+                                last_indexed_line == nullptr
+                                    ? (uint64_t) -1
+                                    : last_indexed_line
+                                          ->get_time<
+                                              std::chrono::microseconds>()
+                                          .count());
+                            if (retval <= rebuild_result::rr_partial_rebuild
+                                && all_time_ordered_formats)
+                            {
+                                retval = rebuild_result::rr_partial_rebuild;
+                                if (!lowest_tv
+                                    || new_file_line.get_timeval()
+                                        < lowest_tv.value())
+                                {
+                                    lowest_tv = new_file_line.get_timeval();
+                                }
+                            } else {
+                                log_debug(
+                                    "already doing full rebuild, doing "
+                                    "full_sort as well");
+                                force = true;
+                                full_sort = true;
+                            }
+                        }
+                    }
+                    break;
+                case logfile::rebuild_result_t::INVALID:
+                case logfile::rebuild_result_t::NEW_ORDER:
+                    log_debug("%s: log file has a new order, full rebuild",
+                              lf->get_filename().c_str());
+                    retval = rebuild_result::rr_full_rebuild;
+                    force = true;
+                    full_sort = true;
+                    break;
+            }
+        };
+
+    // Phase 1: Collect metadata and categorize files for scanning
     this->lss_all_timestamp_flags = 0;
+    std::vector<size_t> sequential_files;
+    std::vector<size_t> parallel_files;
+    bool is_paused = this->tss_view->is_paused();
+
     for (const auto file_index : file_order) {
         auto& ld = *(this->lss_files[file_index]);
         auto* lf = ld.get_file_ptr();
@@ -1108,103 +1196,131 @@ logfile_sub_source::rebuild_index(std::optional<ui_clock::time_point> deadline)
                 retval = rebuild_result::rr_full_rebuild;
                 full_sort = true;
             }
+            continue;
+        }
+
+        if (!lf->get_format_ptr()->lf_time_ordered) {
+            all_time_ordered_formats = false;
+        }
+        this->lss_all_timestamp_flags
+            |= lf->get_format_ptr()->lf_timestamp_flags;
+        file_count += 1;
+        total_lines += lf->size();
+        est_remaining_lines += lf->estimated_remaining_lines();
+
+        if (is_paused) {
+            continue;
+        }
+
+        // Files with a detected format can be scanned in parallel since
+        // each file has its own specialized format instance, line buffer,
+        // and index.  Files still detecting format must be scanned
+        // sequentially because format detection iterates shared
+        // root_formats.
+        if (lf->get_format_ptr() != nullptr && lf->get_format_ptr()->lf_specialized) {
+            parallel_files.push_back(file_index);
         } else {
-            if (!lf->get_format_ptr()->lf_time_ordered) {
-                all_time_ordered_formats = false;
-            }
-            if (time_left && deadline && ui_clock::now() > deadline.value()) {
-                log_debug("no time left, skipping %s",
-                          lf->get_filename_as_string().c_str());
-                time_left = false;
-            }
-            this->lss_all_timestamp_flags
-                |= lf->get_format_ptr()->lf_timestamp_flags;
+            sequential_files.push_back(file_index);
+        }
+    }
 
-            if (!this->tss_view->is_paused() && time_left) {
-                auto log_rebuild_res = lf->rebuild_index(deadline);
+    // Phase 2a: Scan files that need format detection sequentially
+    bool time_left = true;
+    for (const auto file_index : sequential_files) {
+        auto& ld = *(this->lss_files[file_index]);
+        auto* lf = ld.get_file_ptr();
 
-                if (ld.ld_lines_indexed < lf->size()
-                    && log_rebuild_res
-                        == logfile::rebuild_result_t::NO_NEW_LINES)
+        if (time_left && deadline && ui_clock::now() > deadline.value()) {
+            log_debug("no time left, skipping %s",
+                      lf->get_filename_as_string().c_str());
+            time_left = false;
+        }
+        if (!time_left) {
+            continue;
+        }
+
+        auto log_rebuild_res = lf->rebuild_index(deadline);
+        process_rebuild_result(ld, lf, log_rebuild_res);
+    }
+
+    // Phase 2b: Scan format-detected files in parallel
+    if (!parallel_files.empty()) {
+        auto max_threads = std::max(1u, std::thread::hardware_concurrency());
+        // Cap to avoid excessive thread creation
+        if (max_threads > 8) {
+            max_threads = 8;
+        }
+
+        if (parallel_files.size() <= 1 || max_threads <= 1) {
+            // Fall back to sequential for single file or single core
+            for (const auto file_index : parallel_files) {
+                auto& ld = *(this->lss_files[file_index]);
+                auto* lf = ld.get_file_ptr();
+
+                if (time_left && deadline
+                    && ui_clock::now() > deadline.value())
                 {
-                    // This is a bit awkward... if the logfile indexing was
-                    // complete before being added to us, we need to adjust
-                    // the rebuild result to make it look like new lines
-                    // were added.
-                    log_rebuild_res = logfile::rebuild_result_t::NEW_LINES;
+                    log_debug("no time left, skipping %s",
+                              lf->get_filename_as_string().c_str());
+                    time_left = false;
                 }
-                switch (log_rebuild_res) {
-                    case logfile::rebuild_result_t::NO_NEW_LINES:
-                        break;
-                    case logfile::rebuild_result_t::NEW_LINES:
-                        if (retval == rebuild_result::rr_no_change) {
-                            retval = rebuild_result::rr_appended_lines;
-                        }
-                        log_debug("new lines for %s:%zu",
-                                  lf->get_filename_as_string().c_str(),
-                                  lf->size());
-                        if (!this->lss_index.empty()
-                            && lf->size() > ld.ld_lines_indexed)
-                        {
-                            auto& new_file_line = (*lf)[ld.ld_lines_indexed];
-                            auto cl = this->lss_index.back().value();
-                            auto* last_indexed_line = this->find_line(cl);
+                if (!time_left) {
+                    continue;
+                }
 
-                            // If there are new lines that are older than what
-                            // we have in the index, we need to resort.
-                            if (last_indexed_line == nullptr
-                                || new_file_line
-                                    < last_indexed_line->get_timeval())
-                            {
-                                log_debug(
-                                    "%s:%ld: found older lines, full "
-                                    "rebuild: %p  %lld < %lld",
-                                    lf->get_filename().c_str(),
-                                    ld.ld_lines_indexed,
-                                    last_indexed_line,
-                                    new_file_line
-                                        .get_time<std::chrono::microseconds>()
-                                        .count(),
-                                    last_indexed_line == nullptr
-                                        ? (uint64_t) -1
-                                        : last_indexed_line
-                                              ->get_time<
-                                                  std::chrono::microseconds>()
-                                              .count());
-                                if (retval <= rebuild_result::rr_partial_rebuild
-                                    && all_time_ordered_formats)
-                                {
-                                    retval = rebuild_result::rr_partial_rebuild;
-                                    if (!lowest_tv
-                                        || new_file_line.get_timeval()
-                                            < lowest_tv.value())
-                                    {
-                                        lowest_tv = new_file_line.get_timeval();
-                                    }
-                                } else {
-                                    log_debug(
-                                        "already doing full rebuild, doing "
-                                        "full_sort as well");
-                                    force = true;
-                                    full_sort = true;
-                                }
-                            }
-                        }
-                        break;
-                    case logfile::rebuild_result_t::INVALID:
-                    case logfile::rebuild_result_t::NEW_ORDER:
-                        log_debug("%s: log file has a new order, full rebuild",
-                                  lf->get_filename().c_str());
-                        retval = rebuild_result::rr_full_rebuild;
-                        force = true;
-                        full_sort = true;
-                        break;
+                auto log_rebuild_res = lf->rebuild_index(deadline);
+                process_rebuild_result(ld, lf, log_rebuild_res);
+            }
+        } else {
+            // Parallel scan: disable UI observer (not thread-safe),
+            // dispatch rebuild_index to worker threads, then collect
+            // results on the main thread.
+            struct parallel_task {
+                size_t pt_file_index;
+                logfile* pt_file;
+                logfile_observer* pt_saved_observer;
+                std::future<logfile::rebuild_result_t> pt_future;
+            };
+
+            std::vector<parallel_task> tasks;
+            tasks.reserve(parallel_files.size());
+
+            for (const auto file_index : parallel_files) {
+                auto* lf = this->lss_files[file_index]->get_file_ptr();
+
+                // Save and clear the logfile_observer to avoid
+                // UI updates from worker threads
+                auto* saved_obs = lf->get_logfile_observer();
+                lf->set_logfile_observer(nullptr);
+
+                tasks.push_back(parallel_task{
+                    file_index,
+                    lf,
+                    saved_obs,
+                    std::async(std::launch::async,
+                               [lf, deadline]() {
+                                   return lf->rebuild_index(deadline);
+                               }),
+                });
+
+                // Limit in-flight tasks to max_threads by waiting
+                // for earlier tasks when we hit the limit
+                if (tasks.size() >= max_threads) {
+                    auto& oldest = tasks[tasks.size() - max_threads];
+                    oldest.pt_future.wait();
                 }
             }
-            file_count += 1;
-            total_lines += lf->size();
 
-            est_remaining_lines += lf->estimated_remaining_lines();
+            // Collect all results
+            for (auto& task : tasks) {
+                auto log_rebuild_res = task.pt_future.get();
+                auto& ld = *(this->lss_files[task.pt_file_index]);
+
+                // Restore the observer
+                task.pt_file->set_logfile_observer(task.pt_saved_observer);
+
+                process_rebuild_result(ld, task.pt_file, log_rebuild_res);
+            }
         }
     }
 

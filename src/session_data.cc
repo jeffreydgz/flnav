@@ -2392,7 +2392,7 @@ lnav::session::regex101::get_entries()
         fetch_res.match(
             [&done](const prepared_stmt::end_of_rows&) { done = true; },
             [](const prepared_stmt::fetch_error&) {},
-            [&retval](entry en) { retval.emplace_back(en); });
+            [&retval](entry en) { retval.emplace_back(std::move(en)); });
     }
     return Ok(retval);
 }

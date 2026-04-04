@@ -457,7 +457,9 @@ view_curses::mvwattrline(ncplane* window,
 
     text_attrs resolved_line_attrs[line_width_chars + 1];
 
-    std::stable_sort(sa.begin(), sa.end());
+    if (!std::is_sorted(sa.begin(), sa.end())) {
+        std::stable_sort(sa.begin(), sa.end());
+    }
     for (auto iter = sa.cbegin(); iter != sa.cend(); ++iter) {
         auto attr_range = iter->sa_range;
 

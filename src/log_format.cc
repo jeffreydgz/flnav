@@ -138,6 +138,7 @@ opid_time_range::operator|=(const opid_time_range& rhs)
             if (sub.ostr_subid == rhs_sub.ostr_subid) {
                 sub.ostr_range |= rhs_sub.ostr_range;
                 found = true;
+                break;
             }
         }
         if (!found) {
@@ -317,12 +318,13 @@ log_format::opid_descriptors::to_string(
     std::string retval;
 
     for (size_t lpc = 0; lpc < this->od_descriptors->size(); lpc++) {
-        retval.append(this->od_descriptors->at(lpc).od_prefix);
+        const auto& desc = (*this->od_descriptors)[lpc];
+        retval.append(desc.od_prefix);
         auto val = lod.value_for(lpc);
         if (val) {
             retval.append(*val.value());
         }
-        retval.append(this->od_descriptors->at(lpc).od_suffix);
+        retval.append(desc.od_suffix);
     }
 
     return retval;
@@ -1132,7 +1134,7 @@ struct json_log_userdata {
         }
 
         auto owned_frag = field_frag.to_owned(format->elf_allocator);
-        format->elf_value_def_frag_map[owned_frag] = nullptr;
+        format->elf_value_def_frag_map.emplace(owned_frag, nullptr);
         format->elf_value_def_read_order.emplace_back(owned_frag, nullptr);
         this->jlu_read_order_index += 1;
         return nullptr;

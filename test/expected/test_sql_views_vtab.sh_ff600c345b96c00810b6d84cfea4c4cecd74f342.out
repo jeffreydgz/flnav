@@ -287,5 +287,68 @@
         },
         "selected_text": null,
         "row_details": null
+    },
+    {
+        "name": "ssh-stats",
+        "top": 0,
+        "left": 0,
+        "height": 1,
+        "inner_height": 0,
+        "top_time": null,
+        "top_file": null,
+        "paused": 0,
+        "search": "",
+        "filtering": 0,
+        "movement": "top",
+        "top_meta": null,
+        "selection": 0,
+        "options": {
+            "hidden-fields": "hide",
+            "word-wrap": "none"
+        },
+        "selected_text": null,
+        "row_details": null
+    },
+    {
+        "name": "session-trace",
+        "top": 0,
+        "left": 0,
+        "height": 1,
+        "inner_height": 0,
+        "top_time": null,
+        "top_file": null,
+        "paused": 0,
+        "search": "",
+        "filtering": 0,
+        "movement": "top",
+        "top_meta": null,
+        "selection": 0,
+        "options": {
+            "hidden-fields": "hide",
+            "word-wrap": "none"
+        },
+        "selected_text": null,
+        "row_details": null
+    },
+    {
+        "name": "log-gaps",
+        "top": 0,
+        "left": 0,
+        "height": 1,
+        "inner_height": 0,
+        "top_time": null,
+        "top_file": null,
+        "paused": 0,
+        "search": "",
+        "filtering": 0,
+        "movement": "top",
+        "top_meta": null,
+        "selection": 0,
+        "options": {
+            "hidden-fields": "hide",
+            "word-wrap": "none"
+        },
+        "selected_text": null,
+        "row_details": null
     }
 ]

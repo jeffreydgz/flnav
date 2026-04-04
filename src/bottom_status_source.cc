@@ -183,7 +183,7 @@ bottom_status_source::update_hits(textview_curses* tc)
         }
         this->bss_is_searching = false;
     }
-    this->update_pacman(this->bss_is_loading || this->bss_is_searching);
+    this->refresh_pacman();
     // this->bss_error.clear();
     sf.set_role(new_role);
     retval = this->update_marks(tc) || retval;
@@ -201,7 +201,7 @@ bottom_status_source::update_loading(file_off_t off,
     require_ge(total, off);
 
     this->bss_is_loading = (total > 0);
-    this->update_pacman(this->bss_is_loading || this->bss_is_searching);
+    this->refresh_pacman();
 
     if (total == 0) {
         sf.set_cylon(false);

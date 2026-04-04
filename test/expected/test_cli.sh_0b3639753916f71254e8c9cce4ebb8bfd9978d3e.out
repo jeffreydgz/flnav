@@ -454,16 +454,16 @@
                     "h1": {
                         "color": "",
                         "background-color": "",
-                        "underline": true,
-                        "bold": false,
+                        "underline": false,
+                        "bold": true,
                         "italic": false,
                         "strike": false
                     },
                     "h2": {
                         "color": "",
                         "background-color": "",
-                        "underline": true,
-                        "bold": false,
+                        "underline": false,
+                        "bold": true,
                         "italic": false,
                         "strike": false
                     },
@@ -8109,6 +8109,11 @@
                     "command": ":prompt search",
                     "alt-msg": ""
                 },
+                "x30": {
+                    "id": "",
+                    "command": ":ssh-stats",
+                    "alt-msg": "Press ${ansi_bold}0${ansi_norm} to toggle the SSH/IP statistics panel"
+                },
                 "x31": {
                     "id": "",
                     "command": ":goto next 10 minutes after the hour",
@@ -8283,6 +8288,11 @@
                     "id": "",
                     "command": ";UPDATE lnav_top_view SET options = json_set(options, '$.hidden-fields', CASE jget(options, '/hidden-fields', 'hide') WHEN 'hide' THEN 'show' ELSE 'hide' END)",
                     "alt-msg": ""
+                },
+                "x79": {
+                    "id": "",
+                    "command": ":normalize-timestamps",
+                    "alt-msg": "Press ${ansi_bold}y${ansi_norm} to toggle UTC timestamp normalization"
                 },
                 "x7b": {
                     "id": "",

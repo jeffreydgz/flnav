@@ -193,6 +193,8 @@ struct lnav_data_t {
     std::unique_ptr<spectrogram_source> ld_spectro_source;
 
     plain_text_source ld_ssh_stats_source;
+    plain_text_source ld_session_trace_source;
+    plain_text_source ld_log_gaps_source;
     std::unordered_set<std::string> ld_ioc_ips;  // IP addresses loaded from --ioc file
 
     textfile_sub_source ld_text_source;

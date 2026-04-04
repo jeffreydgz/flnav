@@ -57,6 +57,8 @@ typedef enum {
     LNV_SPECTRO,
     LNV_TIMELINE,
     LNV_SSH_STATS,
+    LNV_SESSION_TRACE,
+    LNV_LOG_GAPS,
 
     LNV__MAX
 } lnav_view_t;
