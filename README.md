@@ -57,9 +57,15 @@ Reconstruct a single actor's activity across all loaded log files.
 
 | Interface | How to use |
 |---|---|
-| Command | `:session-trace <IP or username>` |
+| Command | `:session-trace <actor> [<actor2> ...]` |
+
+Supports **multiple arguments** — trace by both IP and username simultaneously (e.g. `:session-trace 192.168.1.1 admin`). A line matches if it contains any of the specified targets.
+
+**Forensic summary** at the top of the report shows: first/last seen timestamps, total time span, contributing log files, all IPs seen, all users seen, authentication accept/fail counts, session outcomes (closed/opened/unknown), error/warning counts, and the longest session.
 
 Groups matching log lines into sessions using connection boundaries and a 30-minute inactivity timeout. Each session header shows start/end time, duration, source IP, user, and outcome. Press `n`/`N` to jump between sessions.
+
+**Syntax highlighting** — log lines are colorized with the same semantic colors as the main log view: IPs, hostnames, usernames, PIDs, and process names each get distinct colors; numbers and quoted strings are highlighted; warning/error log levels use olive/maroon colors.
 
 Tab-completion scans the first 50k lines to suggest IPs and usernames.
 
