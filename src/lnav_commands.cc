@@ -3583,6 +3583,7 @@ struct st_trace_line {
     time_t local_offset{0};
     std::string filename;
     std::string text;
+    log_level_t level{log_level_t::LEVEL_UNKNOWN};
 };
 
 struct st_session_info {
@@ -3606,22 +3607,291 @@ rebuild_session_trace_report()
         return;
     }
 
-    attr_line_t report;
+    std::vector<attr_line_t> lines;
     std::vector<vis_line_t> session_header_lines;
 
-    report.append(fmt::format(
+    // Helper: push a plain text line
+    auto push_line = [&lines](const std::string& text) {
+        lines.emplace_back(text);
+    };
+
+    // Helper: push a log line with SA_LEVEL + token-level coloring
+    auto push_log_line = [&lines](const std::string& text, log_level_t level) {
+        auto& vc = view_colors::singleton();
+        attr_line_t al(text);
+        al.al_attrs.emplace_back(
+            line_range{0, -1},
+            SA_LEVEL.value(static_cast<int64_t>(level)));
+
+        // Find the start of the original log text (after "| ")
+        auto pipe_pos = text.find(" | ");
+        if (pipe_pos != std::string::npos) {
+            auto body_start = (int) (pipe_pos + 3);
+            auto body_sf = string_fragment::from_str_range(
+                text, body_start, text.size());
+            data_scanner ds(body_sf);
+            while (true) {
+                auto tok_res = ds.tokenize2();
+                if (!tok_res) {
+                    break;
+                }
+                auto token_lr = line_range{
+                    tok_res->tr_capture.c_begin,
+                    tok_res->tr_capture.c_end};
+                switch (tok_res->tr_token) {
+                    case DT_IPV4_ADDRESS:
+                    case DT_IPV6_ADDRESS:
+                    case DT_MAC_ADDRESS:
+                    case DT_UUID:
+                    case DT_URL:
+                    case DT_PATH:
+                    case DT_EMAIL:
+                    case DT_WORD:
+                    case DT_ID:
+                    case DT_CONSTANT: {
+                        auto ident_attrs = vc.attrs_for_ident(
+                            &text[tok_res->tr_capture.c_begin],
+                            tok_res->tr_capture.length());
+                        al.al_attrs.emplace_back(
+                            token_lr, VC_STYLE.value(ident_attrs));
+                        break;
+                    }
+                    case DT_NUMBER:
+                    case DT_HEX_NUMBER:
+                    case DT_OCTAL_NUMBER:
+                        al.al_attrs.emplace_back(
+                            token_lr,
+                            VC_ROLE.value(role_t::VCR_NUMBER));
+                        break;
+                    case DT_QUOTED_STRING:
+                        al.al_attrs.emplace_back(
+                            token_lr,
+                            VC_ROLE.value(role_t::VCR_STRING));
+                        break;
+                    default:
+                        break;
+                }
+            }
+        }
+
+        lines.emplace_back(std::move(al));
+    };
+
+    push_line(fmt::format(
         FMT_STRING(" Session Trace: {} ({} sessions, {} matching lines)"),
         s_session_trace_target,
         s_session_trace_sessions.size(),
         s_session_trace_lines.size()));
-    report.append("\n");
 
-    // Helper: count newlines in the report so far to get current line number
-    auto current_line = [&report]() -> vis_line_t {
-        auto count = std::count(report.al_string.begin(),
-                                report.al_string.end(), '\n');
-        return vis_line_t(static_cast<int>(count));
-    };
+    // --- Forensic Summary ---
+    if (!s_session_trace_sessions.empty()) {
+        // Gather aggregated data across all sessions and lines
+        std::set<std::string> all_files;
+        std::set<std::string> all_ips;
+        std::set<std::string> all_users;
+        size_t auth_accepted = 0;
+        size_t auth_failed = 0;
+        size_t outcome_closed = 0;
+        size_t outcome_opened = 0;
+        size_t outcome_unknown = 0;
+        size_t level_error = 0;
+        size_t level_warning = 0;
+        int64_t longest_dur = -1;
+        size_t longest_idx = 0;
+
+        static const auto auth_accept_re
+            = lnav::pcre2pp::code::from_const(
+                R"((?i)(?:Accepted |session opened|authenticated|login successful))");
+        static const auto auth_fail_re
+            = lnav::pcre2pp::code::from_const(
+                R"((?i)(?:Failed |authentication failure|invalid user|failed password|access denied|login failed|permission denied))");
+
+        for (auto& ml : s_session_trace_lines) {
+            all_files.insert(ml.filename);
+
+            if (ml.level == log_level_t::LEVEL_ERROR
+                || ml.level == log_level_t::LEVEL_CRITICAL
+                || ml.level == log_level_t::LEVEL_FATAL)
+            {
+                ++level_error;
+            } else if (ml.level == log_level_t::LEVEL_WARNING) {
+                ++level_warning;
+            }
+
+            auto line_sf = string_fragment::from_str(ml.text);
+            if (auth_accept_re.find_in(line_sf).ignore_error().has_value()) {
+                ++auth_accepted;
+            }
+            if (auth_fail_re.find_in(line_sf).ignore_error().has_value()) {
+                ++auth_failed;
+            }
+        }
+
+        for (size_t si = 0; si < s_session_trace_sessions.size(); ++si) {
+            auto& sess = s_session_trace_sessions[si];
+
+            if (!sess.source_ip.empty()) {
+                all_ips.insert(sess.source_ip);
+            }
+            if (!sess.user.empty()) {
+                all_users.insert(sess.user);
+            }
+
+            if (sess.outcome == "closed") {
+                ++outcome_closed;
+            } else if (sess.outcome == "opened") {
+                ++outcome_opened;
+            } else {
+                ++outcome_unknown;
+            }
+
+            int64_t dur = sess.end_tv.tv_sec - sess.start_tv.tv_sec;
+            if (dur > longest_dur) {
+                longest_dur = dur;
+                longest_idx = si;
+            }
+        }
+
+        // Also scan all lines for IPs not captured in session metadata
+        {
+            auto extract_all_ips
+                = [](const std::string& line,
+                     std::set<std::string>& out) {
+                      auto sf = string_fragment::from_str(line);
+                      data_scanner ds(sf);
+                      while (true) {
+                          auto tok_res = ds.tokenize2();
+                          if (!tok_res) {
+                              break;
+                          }
+                          if (tok_res->tr_token == DT_IPV4_ADDRESS
+                              || tok_res->tr_token == DT_IPV6_ADDRESS)
+                          {
+                              out.insert(tok_res->to_string());
+                          }
+                      }
+                  };
+            for (auto& ml : s_session_trace_lines) {
+                extract_all_ips(ml.text, all_ips);
+            }
+        }
+
+        // First/last timestamps
+        auto& first_line = s_session_trace_lines.front();
+        auto& last_line = s_session_trace_lines.back();
+        int64_t total_span = last_line.tv.tv_sec - first_line.tv.tv_sec;
+
+        push_line("");
+        session_header_lines.push_back(
+            vis_line_t(static_cast<int>(lines.size())));
+        push_line("── Summary ──");
+        push_line(fmt::format(
+            FMT_STRING("  First Seen: {}"),
+            forensic_format_tv(first_line.tv, first_line.local_offset)));
+        push_line(fmt::format(
+            FMT_STRING("  Last Seen:  {}"),
+            forensic_format_tv(last_line.tv, last_line.local_offset)));
+        push_line(fmt::format(
+            FMT_STRING("  Time Span:  {}"),
+            forensic_format_duration(total_span)));
+
+        // Log files
+        {
+            std::string files_str;
+            for (auto& f : all_files) {
+                if (!files_str.empty()) {
+                    files_str += ", ";
+                }
+                files_str += f;
+            }
+            push_line(fmt::format(
+                FMT_STRING("  Log Files:  {}"), files_str));
+        }
+
+        // IPs seen
+        if (!all_ips.empty()) {
+            std::string ips_str;
+            for (auto& ip : all_ips) {
+                if (!ips_str.empty()) {
+                    ips_str += ", ";
+                }
+                ips_str += ip;
+            }
+            push_line(fmt::format(
+                FMT_STRING("  IPs Seen:   {}"), ips_str));
+        }
+
+        // Users seen
+        if (!all_users.empty()) {
+            std::string users_str;
+            for (auto& u : all_users) {
+                if (!users_str.empty()) {
+                    users_str += ", ";
+                }
+                users_str += u;
+            }
+            push_line(fmt::format(
+                FMT_STRING("  Users Seen: {}"), users_str));
+        }
+
+        // Auth counts
+        if (auth_accepted > 0 || auth_failed > 0) {
+            push_line(fmt::format(
+                FMT_STRING("  Auth:       {} accepted, {} failed"),
+                auth_accepted, auth_failed));
+        }
+
+        // Outcomes
+        {
+            std::string outcome_str;
+            if (outcome_closed > 0) {
+                outcome_str += fmt::format(
+                    FMT_STRING("{} closed"), outcome_closed);
+            }
+            if (outcome_opened > 0) {
+                if (!outcome_str.empty()) {
+                    outcome_str += ", ";
+                }
+                outcome_str += fmt::format(
+                    FMT_STRING("{} opened"), outcome_opened);
+            }
+            if (outcome_unknown > 0) {
+                if (!outcome_str.empty()) {
+                    outcome_str += ", ";
+                }
+                outcome_str += fmt::format(
+                    FMT_STRING("{} unknown"), outcome_unknown);
+            }
+            push_line(fmt::format(
+                FMT_STRING("  Outcomes:   {}"), outcome_str));
+        }
+
+        // Error/warning counts
+        if (level_error > 0 || level_warning > 0) {
+            std::string err_str;
+            if (level_error > 0) {
+                err_str += fmt::format(
+                    FMT_STRING("{} error"), level_error);
+            }
+            if (level_warning > 0) {
+                if (!err_str.empty()) {
+                    err_str += ", ";
+                }
+                err_str += fmt::format(
+                    FMT_STRING("{} warning"), level_warning);
+            }
+            push_line(fmt::format(
+                FMT_STRING("  Errors:     {}"), err_str));
+        }
+
+        // Longest session (only when 2+ sessions)
+        if (s_session_trace_sessions.size() > 1 && longest_dur >= 0) {
+            push_line(fmt::format(
+                FMT_STRING("  Longest:    {} (Session {})"),
+                forensic_format_duration(longest_dur),
+                longest_idx + 1));
+        }
+    }
 
     for (size_t si = 0; si < s_session_trace_sessions.size(); ++si) {
         auto& sess = s_session_trace_sessions[si];
@@ -3631,56 +3901,51 @@ rebuild_session_trace_report()
         int mins = static_cast<int>((duration_sec % 3600) / 60);
         int secs = static_cast<int>(duration_sec % 60);
 
-        report.append("\n");
-        session_header_lines.push_back(current_line());
-        report.append(
+        push_line("");
+        session_header_lines.push_back(
+            vis_line_t(static_cast<int>(lines.size())));
+        push_line(
             fmt::format(FMT_STRING("── Session {} ──"), si + 1));
-        report.append("\n");
-        report.append(
+        push_line(
             fmt::format(FMT_STRING("  Start:    {}"),
                         forensic_format_tv(sess.start_tv, sess.local_offset)));
-        report.append("\n");
-        report.append(
+        push_line(
             fmt::format(FMT_STRING("  End:      {}"),
                         forensic_format_tv(sess.end_tv, sess.local_offset)));
-        report.append("\n");
-        report.append(
+        push_line(
             fmt::format(FMT_STRING("  Duration: {:02d}:{:02d}:{:02d}"),
                         hours, mins, secs));
-        report.append("\n");
         if (!sess.source_ip.empty()) {
-            report.append(
+            push_line(
                 fmt::format(FMT_STRING("  Source:   {}"), sess.source_ip));
-            report.append("\n");
         }
         if (!sess.user.empty()) {
-            report.append(
+            push_line(
                 fmt::format(FMT_STRING("  User:     {}"), sess.user));
-            report.append("\n");
         }
-        report.append(
+        push_line(
             fmt::format(FMT_STRING("  Outcome:  {}"),
                         sess.outcome.empty() ? "unknown" : sess.outcome));
-        report.append("\n");
-        report.append(
+        push_line(
             fmt::format(FMT_STRING("  Lines:    {}"),
                         sess.line_indices.size()));
-        report.append("\n\n");
+        push_line("");
 
         for (auto idx : sess.line_indices) {
             auto& ml = s_session_trace_lines[idx];
-            report.append(
+            push_log_line(
                 fmt::format(FMT_STRING("  [{}] {} | {}"),
                             forensic_format_tv(ml.tv, ml.local_offset),
                             ml.filename,
-                            ml.text));
-            report.append("\n");
+                            ml.text),
+                ml.level);
         }
     }
 
     auto& st_view = lnav_data.ld_views[LNV_SESSION_TRACE];
     auto saved_top = st_view.get_top();
-    lnav_data.ld_session_trace_source.replace_with(report);
+    lnav_data.ld_session_trace_source.replace_with(lines)
+        .set_text_format(text_format_t::TF_PLAINTEXT);
     st_view.reload_data();
     st_view.set_top(saved_top);
 
@@ -3799,8 +4064,43 @@ refresh_forensic_views()
 }
 
 // ---------------------------------------------------------------------------
-// :session-trace <IP or username>
+// :session-trace <actor> [<actor2> ...]
 // ---------------------------------------------------------------------------
+
+// Helper: check if a log line matches a single target (IP or username)
+static bool
+st_line_matches_target(const string_fragment& sf,
+                       const std::string& line_str,
+                       const std::string& target)
+{
+    // Check via data_scanner for exact IP matches
+    {
+        data_scanner ds(sf);
+        while (true) {
+            auto tok_res = ds.tokenize2();
+            if (!tok_res) {
+                break;
+            }
+            if ((tok_res->tr_token == DT_IPV4_ADDRESS
+                 || tok_res->tr_token == DT_IPV6_ADDRESS)
+                && tok_res->to_string() == target)
+            {
+                return true;
+            }
+        }
+    }
+
+    // Freetext match (case-insensitive) for usernames
+    auto it = std::search(
+        line_str.begin(), line_str.end(),
+        target.begin(), target.end(),
+        [](char a, char b) {
+            return std::tolower(static_cast<unsigned char>(a))
+                == std::tolower(static_cast<unsigned char>(b));
+        });
+    return it != line_str.end();
+}
+
 static Result<std::string, lnav::console::user_message>
 com_session_trace(exec_context& ec,
                   std::string cmdline,
@@ -3878,7 +4178,8 @@ com_session_trace(exec_context& ec,
     }
 
     if (args.size() < 2) {
-        return ec.make_error("expecting an IP address or username");
+        return ec.make_error(
+            "expecting an IP address and/or username");
     }
 
     if (ec.ec_dry_run) {
@@ -3893,14 +4194,28 @@ com_session_trace(exec_context& ec,
         return Ok(std::string());
     }
 
-    const std::string target = remaining_args(cmdline, args);
+    // Collect all targets from the arguments (args[1..N])
+    std::vector<std::string> targets;
+    for (size_t ti = 1; ti < args.size(); ++ti) {
+        targets.push_back(args[ti]);
+    }
+
+    // Build display string for all targets
+    std::string target_display;
+    for (size_t ti = 0; ti < targets.size(); ++ti) {
+        if (ti > 0) {
+            target_display += " + ";
+        }
+        target_display += targets[ti];
+    }
+
     auto& lss = lnav_data.ld_log_source;
     const size_t line_count = lss.text_line_count();
 
     // Default session inactivity timeout: 30 minutes
     static constexpr int64_t SESSION_GAP_US = 30LL * 60 * 1000000;
 
-    s_session_trace_target = target;
+    s_session_trace_target = target_display;
     s_session_trace_lines.clear();
     s_session_trace_sessions.clear();
     auto& matching_lines = s_session_trace_lines;
@@ -3909,8 +4224,9 @@ com_session_trace(exec_context& ec,
     {
         attr_line_t placeholder;
         placeholder.append(
-            fmt::format(FMT_STRING(" Session Trace: {}"), target));
-        lnav_data.ld_session_trace_source.replace_with(placeholder);
+            fmt::format(FMT_STRING(" Session Trace: {}"), target_display));
+        lnav_data.ld_session_trace_source.replace_with(placeholder)
+            .set_text_format(text_format_t::TF_PLAINTEXT);
         lnav_data.ld_views[LNV_SESSION_TRACE].reload_data();
         ensure_view(&lnav_data.ld_views[LNV_SESSION_TRACE]);
         lnav_data.ld_bottom_source.update_loading(
@@ -3945,38 +4261,12 @@ com_session_trace(exec_context& ec,
         auto sf = sbr.to_string_fragment();
         auto line_str = sf.to_string();
 
-        // Check if this line mentions the target identifier
+        // A line matches if it contains ANY of the specified targets
         bool matched = false;
-
-        // Check via data_scanner for IP matches
-        {
-            data_scanner ds(sf);
-            while (true) {
-                auto tok_res = ds.tokenize2();
-                if (!tok_res) {
-                    break;
-                }
-                if ((tok_res->tr_token == DT_IPV4_ADDRESS
-                     || tok_res->tr_token == DT_IPV6_ADDRESS)
-                    && tok_res->to_string() == target)
-                {
-                    matched = true;
-                    break;
-                }
-            }
-        }
-
-        // Freetext match (case-insensitive) for usernames
-        if (!matched) {
-            auto it = std::search(
-                line_str.begin(), line_str.end(),
-                target.begin(), target.end(),
-                [](char a, char b) {
-                    return std::tolower(static_cast<unsigned char>(a))
-                        == std::tolower(static_cast<unsigned char>(b));
-                });
-            if (it != line_str.end()) {
+        for (const auto& target : targets) {
+            if (st_line_matches_target(sf, line_str, target)) {
                 matched = true;
+                break;
             }
         }
 
@@ -3991,6 +4281,7 @@ com_session_trace(exec_context& ec,
                 local_off,
                 lf->get_filename().filename().string(),
                 line_str,
+                ll_iter->get_msg_level(),
             });
         }
     }
@@ -3998,9 +4289,11 @@ com_session_trace(exec_context& ec,
     lnav_data.ld_bottom_source.update_loading(0, 0);
 
     if (matching_lines.empty()) {
-        lnav_data.ld_session_trace_source.replace_with(
-            attr_line_t().append(fmt::format(
-                FMT_STRING("No log lines found matching '{}'"), target)));
+        lnav_data.ld_session_trace_source
+            .replace_with(attr_line_t().append(fmt::format(
+                FMT_STRING("No log lines found matching '{}'"),
+                target_display)))
+            .set_text_format(text_format_t::TF_PLAINTEXT);
         lnav_data.ld_views[LNV_SESSION_TRACE].reload_data();
         return Ok(std::string());
     }
@@ -4112,9 +4405,7 @@ com_session_trace(exec_context& ec,
         // Try to extract IP and user from this line
         if (current.source_ip.empty()) {
             auto ip = extract_ip(ml.text);
-            if (!ip.empty() && ip != target) {
-                current.source_ip = ip;
-            } else if (!ip.empty()) {
+            if (!ip.empty()) {
                 current.source_ip = ip;
             }
         }
@@ -5253,7 +5544,8 @@ readline_context::command_t STD_COMMANDS[] = {
                 "or inactivity timeout")
             .with_parameter(
                 {"actor",
-                 "The IP address or username to trace across all logs"})
+                 "One or more IP addresses and/or usernames to trace "
+                 "across all logs (e.g. 192.168.1.1 admin)"})
             .with_tags({"forensics"}),
     },
     {

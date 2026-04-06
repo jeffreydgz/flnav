@@ -1494,7 +1494,7 @@
   Extract and reconstruct a single actor's session from all loaded log files, grouping by connect/disconnect boundaries or inactivity timeout
 
   **Parameters**
-    * **actor\*** --- The IP address or username to trace across all logs
+    * **actor\*** --- One or more IP addresses and/or usernames to trace across all logs (e.g. 192.168.1.1 admin)
 
   **See Also**
     :ref:`log_gaps`, :ref:`log_gaps`

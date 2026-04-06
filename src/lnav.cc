@@ -3681,6 +3681,8 @@ SELECT tbl_name FROM sqlite_master WHERE sql LIKE 'CREATE VIRTUAL TABLE%'
         .set_overlay_source(generic_overlay_menu.get())
         .set_word_wrap(false);
 
+    lnav_data.ld_session_trace_source.set_text_format(
+        text_format_t::TF_PLAINTEXT);
     lnav_data.ld_views[LNV_SESSION_TRACE]
         .set_sub_source(&lnav_data.ld_session_trace_source)
         .set_overlay_source(generic_overlay_menu.get())
