@@ -1,14 +1,14 @@
 
-# lnav 0.14.0
+# flnav 0.14.0
 
 A fancy log file viewer for the terminal.
 
 ## Overview
 
-The Logfile Navigator, **lnav**, is an enhanced log file viewer that
+The Logfile Navigator, **flnav**, is an enhanced log file viewer that
 takes advantage of any semantic information that can be gleaned from
 the files being viewed, such as timestamps and log levels. Using this
-extra semantic information, lnav can do things like interleaving
+extra semantic information, flnav can do things like interleaving
 messages from different files, generate histograms of messages over
 time, and providing hotkeys for navigating through the file. It is
 hoped that these features will allow the user to quickly and
@@ -16,7 +16,7 @@ efficiently zero in on problems.
 
 ## Opening Paths/URLs
 
-The main arguments to lnav are the local/remote files, directories,
+The main arguments to flnav are the local/remote files, directories,
 glob patterns, or URLs to be viewed. If no arguments are given, the
 default syslog file for your system will be opened. These arguments
 will be polled periodically so that any new data or files will be
@@ -28,14 +28,14 @@ host, the SSH agent can be used to do authentication.
 
 ## Options
 
-Lnav takes a list of files to view and/or you can use the flag
+Flnav takes a list of files to view and/or you can use the flag
 arguments to load well-known log files, such as the syslog log
 files. The flag arguments are:
 
 * `-r` Recursively load files from the given directory hierarchies.
 * `-R` Load older rotated log files as well.
 
-When using the flag arguments, lnav will look for the files relative
+When using the flag arguments, flnav will look for the files relative
 to the current directory and its parent directories. In other words,
 if you are working within a directory that has the well-known log
 files, those will be preferred over any others.
@@ -49,9 +49,9 @@ not have to manually specify the log file format. The currently
 supported formats are: syslog, apache, strace, tcsh history, and
 generic log files with timestamps.
 
-Lnav will also display data piped in on the standard input.
+Flnav will also display data piped in on the standard input.
 
-To automatically execute queries or lnav commands after the files
+To automatically execute queries or flnav commands after the files
 have been loaded, you can use the following options:
 
 * `-c cmd` A command, query, or file to execute. The first character
@@ -62,7 +62,7 @@ have been loaded, you can use the following options:
   to the tenth line in the file, you can do:
 
   ```shell
-  lnav -c ':goto 10' foo.log
+  flnav -c ':goto 10' foo.log
   ```
 
   This option can be given multiple times to execute multiple
@@ -73,11 +73,11 @@ have been loaded, you can use the following options:
 
 To execute commands/queries without opening the interactive text UI,
 you can pass the `-n` option. This combination of options allows you to
-write scripts for processing logs with lnav. For example, to get a list
+write scripts for processing logs with flnav. For example, to get a list
 of IP addresses that dhclient has bound to in CSV format:
 
 ```lnav
-#! /usr/bin/lnav -nf
+#! /usr/bin/flnav -nf
 
 # Usage: dhcp_ip.lnav /var/log/messages
 # Only include lines that look like:
@@ -97,7 +97,7 @@ of IP addresses that dhclient has bound to in CSV format:
 
 The main part of the display shows the log lines from the files interleaved
 based on time-of-day. New lines are automatically loaded as they are appended
-to the files and, if you are viewing the bottom of the files, lnav will scroll
+to the files and, if you are viewing the bottom of the files, flnav will scroll
 down to display the new lines, much like `tail -f`.
 
 On color displays, the lines will be highlighted as follows:
@@ -164,7 +164,7 @@ view to the filter editor. The editor allows you to create, enable/disable,
 and delete filters easily.
 
 Along with filters, a "Files" panel will also be available for viewing
-and controlling the files that lnav is currently monitoring.
+and controlling the files that flnav is currently monitoring.
 
 Finally, the last line on the display is where you can enter search
 patterns and execute internal commands, such as converting a
@@ -257,7 +257,7 @@ that you can always use `q` to pop the top view off of the stack.
 | I             | Switch between the log and histogram views while keeping the time focused line of each view in sync. For example, if the top line in the log view is "11:40", hitting `I` will switch to the histogram view and scrolled to display "11:00" at the top (if the zoom level is hours).                                                                                                                                                                                                                                         |
 | z/Shift Z     | Zoom in or out one step in the histogram view.                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | v             | Switch to/from the SQL result view.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| V             | Switch between the log and SQL result views while keeping the top line number in the log view in sync with the log_line column in the SQL view. For example, doing a query that selects for "log_idle_msecs" and "log_line", you can move the top of the SQL view to a line and hit 'V' to switch to the log view and move to the line number that was selected in the "log_line" column. If there is no "log_line" column, lnav will find the first column with a timestamp and move to corresponding time in the log view. |
+| V             | Switch between the log and SQL result views while keeping the top line number in the log view in sync with the log_line column in the SQL view. For example, doing a query that selects for "log_idle_msecs" and "log_line", you can move the top of the SQL view to a line and hit 'V' to switch to the log view and move to the line number that was selected in the "log_line" column. If there is no "log_line" column, flnav will find the first column with a timestamp and move to corresponding time in the log view. |
 | TAB/Shift TAB | In the SQL result view, cycle through the columns that are graphed. Initially, all number values are displayed in a stacked graph. Pressing TAB will change the display to only graph the first column. Repeatedly pressing TAB will cycle through the columns until they are all graphed again.                                                                                                                                                                                                                             |
 | p             | In the log view: enable or disable the display of the fields that the log message parser knows about or has discovered. This overlay is temporarily enabled when the semicolon key (;) is pressed so that it is easier to write queries.                                                                                                                                                                                                                                                                                     |
 |               | In the DB view: enable or disable the display of values in columns containing JSON-encoded values in the top row. The overlay will display the JSON-Pointer reference and value for all fields in the JSON data.                                                                                                                                                                                                                                                                                                             |
@@ -275,10 +275,10 @@ that you can always use `q` to pop the top view off of the stack.
 | **/**_regexp_                                      | Start a search for the given regular expression. The search is live, so when there is a pause in typing, the currently running search will be canceled and a new one started. The first ten lines that match the search will be displayed in the preview window at the bottom of the view. History is maintained for your searches so you can rerun them easily. Words that are currently displayed are also available for tab-completion, so you can easily search for values without needing to copy-and-paste the string. If there is an error encountered while trying to interpret the expression, the error will be displayed in red on the status line. While the search is active, the 'hits' field in the status line will be green, when finished it will turn back to black. |
 | **:**&lt;command&gt;                               | Execute an internal command. The commands are listed below. History is also supported in this context as well as tab-completion for commands and some arguments. The result of the command replaces the command you typed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | **;**&lt;sql&gt;                                   | Execute an SQL query. Most supported log file formats provide a sqlite virtual table backend that can be used in queries. See the SQL section below for more information.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| **&VerticalLine;**&lt;script&gt; [arg1...] | Execute an lnav script contained in a format directory (e.g. \~/.lnav/formats/default). The script can contain lines starting with `:`, `;`, or `|` to execute commands, SQL queries or execute other files in lnav. Any values after the script name are treated as arguments can be referenced in the script using `$1`, `$2`, and so on, like in a shell script.                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **&VerticalLine;**&lt;script&gt; [arg1...] | Execute an flnav script contained in a format directory (e.g. \~/.flnav/formats/default). The script can contain lines starting with `:`, `;`, or `|` to execute commands, SQL queries or execute other files in flnav. Any values after the script name are treated as arguments can be referenced in the script using `$1`, `$2`, and so on, like in a shell script.                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | CTRL+], ESCAPE                                     | Abort command-line entry started with `/`, `:`, `;`, or `|`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
-> **Note**: The regular expression format used by lnav is
+> **Note**: The regular expression format used by flnav is
 > [PCRE](http://perldoc.perl.org/perlre.html)
 > (Perl-Compatible Regular Expressions).
 >
@@ -319,9 +319,9 @@ environment variable to "mouse". `F2` toggles mouse support.
 
 ## Log Analysis
 
-Lnav has support for performing SQL queries on log files using the
+Flnav has support for performing SQL queries on log files using the
 SQLite3 "virtual" table feature. For all supported log file types,
-lnav will create tables that can be queried using the subset of SQL
+flnav will create tables that can be queried using the subset of SQL
 that is supported by SQLite3. For example, to get the top ten URLs
 being accessed in any loaded Apache log files, you can execute:
 
@@ -422,8 +422,8 @@ example of a top ten query into the "/tmp/topten.db" file, you can do:
 The Pipelined Relational Query Language
 [(PRQL)](https://prql-lang.org) is an alternative database query
 language that compiles to SQL.  The main advantage of PRQL,
-in the context of lnav, is that it is easier to work with
-interactively compared to SQL.  For example, lnav can provide
+in the context of flnav, is that it is easier to work with
+interactively compared to SQL.  For example, flnav can provide
 previews of different stages of the pipeline and provide more
 accurate tab-completions for the columns in the result set.
 
@@ -432,7 +432,7 @@ starts with the `from` keyword that specifies the table to use as
 a data source.  The next stage of a pipeline is started by entering
 a pipe symbol (`|`) followed by a
 [PRQL transform](https://prql-lang.org/book/reference/stdlib/transforms/index.html).
-As you build the query in the prompt, lnav will display any relevant
+As you build the query in the prompt, flnav will display any relevant
 help and preview for the current and previous stages of the pipeline.
 
 Using the top ten URLs query from earlier as an example, the PRQL
@@ -444,7 +444,7 @@ version would be as follows:
 
 The first stage selects the data source, the web `access_log` table
 in this case.  The `stats.count_by` transform is a convenience
-provided by lnav that groups by the given column, counts the rows
+provided by flnav that groups by the given column, counts the rows
 in each group, and sorts by count in descending order.  The `take 10`
 turns into the `LIMIT 10`.
 
@@ -453,12 +453,12 @@ turns into the `LIMIT 10`.
 (NOTE: This feature is still very new and not completely reliable yet,
 use with care.)
 
-For log formats that lack message structure, lnav can parse the log
+For log formats that lack message structure, flnav can parse the log
 message and attempt to extract any data fields that it finds. This
 feature is available through the `logline` log table. This table is
 dynamically created and defined based on the message at the top of
 the log view. For example, given the following log message from "sudo",
-lnav will create the "logline" table with columns for "TTY", "PWD",
+flnav will create the "logline" table with columns for "TTY", "PWD",
 "USER", and "COMMAND":
 
 ```
@@ -491,7 +491,7 @@ line is from "dhcpd":
 Sep 16 22:35:57 drill dhcpd: DHCPDISCOVER from 00:16:ce:54:4e:f3 via hme3
 ```
 
-In this case, the lnav parser recognizes that "DHCPDISCOVER", the MAC
+In this case, the flnav parser recognizes that "DHCPDISCOVER", the MAC
 address and the "hme3" device name are values and not normal words. So,
 it builds a table with three columns for each of these values. The
 regular words in the message, like "from" and "via", are then used to
@@ -527,7 +527,7 @@ WILL NOT WORK:
 ;SELECT * FROM $TABLE_NAME; -- Syntax error
 ```
 
-Access to lnav's environment variables is also available via the "environ"
+Access to flnav's environment variables is also available via the "environ"
 table. The table has two columns (name, value) and can be read and written
 to using SQL SELECT, INSERT, UPDATE, and DELETE statements. For example,
 to set the "FOO" variable to the value "BAR":
@@ -550,11 +550,11 @@ A delete will unset the environment variable:
 ```
 
 The table allows you to easily use the results of a SQL query in lnav
-commands, which is especially useful when scripting lnav.
+commands, which is especially useful when scripting flnav.
 
 ## Contact
 
-For more information, visit the lnav website at:
+For more information, visit the flnav website at:
 
 http://lnav.org
 

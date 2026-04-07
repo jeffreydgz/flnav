@@ -97,6 +97,9 @@ int time_extension_functions(struct FuncDef** basic_funcs,
 int yaml_extension_functions(struct FuncDef** basic_funcs,
                              struct FuncDefAgg** agg_funcs);
 
+int entity_extension_functions(struct FuncDef** basic_funcs,
+                               struct FuncDefAgg** agg_funcs);
+
 extern sqlite_registration_func_t sqlite_registration_funcs[];
 
 int register_sqlite_funcs(sqlite3* db, sqlite_registration_func_t* reg_funcs);

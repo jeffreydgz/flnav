@@ -86,7 +86,7 @@ dotlnav()
         auto app_data_path = std::filesystem::path(windows_to_unix_file_path(app_data));
 
         if (std::filesystem::is_directory(app_data_path)) {
-            return app_data_path / "lnav";
+            return app_data_path / "flnav";
         }
     }
 #endif
@@ -95,7 +95,7 @@ dotlnav()
         auto home_path = std::filesystem::path(home_env);
 
         if (std::filesystem::is_directory(home_path)) {
-            auto home_lnav = home_path / ".lnav";
+            auto home_lnav = home_path / ".flnav";
 
             if (std::filesystem::is_directory(home_lnav)) {
                 return home_lnav;
@@ -105,14 +105,14 @@ dotlnav()
                 auto xdg_path = std::filesystem::path(xdg_config_home);
 
                 if (std::filesystem::is_directory(xdg_path)) {
-                    return xdg_path / "lnav";
+                    return xdg_path / "flnav";
                 }
             }
 
             auto home_config = home_path / ".config";
 
             if (std::filesystem::is_directory(home_config)) {
-                return home_config / "lnav";
+                return home_config / "flnav";
             }
 
             return home_lnav;
@@ -131,7 +131,7 @@ dotlnav()
 std::filesystem::path
 workdir()
 {
-    auto subdir_name = fmt::format(FMT_STRING("lnav-user-{}-work"), getuid());
+    auto subdir_name = fmt::format(FMT_STRING("flnav-user-{}-work"), getuid());
     auto tmp_path = std::filesystem::temp_directory_path();
 
     return tmp_path / std::filesystem::path(subdir_name);

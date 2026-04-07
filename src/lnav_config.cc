@@ -351,7 +351,7 @@ install_from_git(const std::string& repo)
         && found_lnav_file == 0)
     {
         auto um = lnav::console::user_message::error(
-                      attr_line_t("invalid lnav repo: ")
+                      attr_line_t("invalid flnav repo: ")
                           .append(lnav::roles::file(repo)))
                       .with_reason("no .json, .sql, or .lnav files were found")
                       .move();
@@ -382,11 +382,11 @@ install_from_git(const std::string& repo)
     if (found_lnav_file > 0) {
         notes.append("found ")
             .append(lnav::roles::number(fmt::to_string(found_lnav_file)))
-            .append(" lnav-script file(s)\n");
+            .append(" flnav-script file(s)\n");
     }
     rename(local_staging_path.c_str(), dest_path.c_str());
     auto um = lnav::console::user_message::ok(
-                  attr_line_t("installed lnav repo at: ")
+                  attr_line_t("installed flnav repo at: ")
                       .append(lnav::roles::file(dest_path.string())))
                   .with_note(notes)
                   .move();
@@ -429,7 +429,7 @@ update_installs_from_git()
     if (!found) {
         printf(
             "No formats from git repositories found, "
-            "use 'lnav -i extra' to install third-party formats\n");
+            "use 'flnav -i extra' to install third-party formats\n");
     }
 
     return retval;
@@ -459,12 +459,12 @@ install_extra_formats()
     auto_fd fd;
 
     if (access(config_root.c_str(), R_OK) == 0) {
-        printf("Updating lnav remote config repo...\n");
+        printf("Updating flnav remote config repo...\n");
         auto pull_cmd = fmt::format(FMT_STRING("cd '{}' && git pull"),
                                     config_root.string());
         log_perror(system(pull_cmd.c_str()));
     } else {
-        printf("Cloning lnav remote config repo...\n");
+        printf("Cloning flnav remote config repo...\n");
         auto clone_cmd = fmt::format(
             FMT_STRING(
                 "git clone https://github.com/tstack/lnav-config.git {}"),
@@ -1774,7 +1774,7 @@ static const struct json_path_container log_source_handlers = {
 static const struct json_path_container url_scheme_handlers = {
     yajlpp::property_handler("handler")
         .with_description(
-            "The name of the lnav script that can handle URLs "
+            "The name of the flnav script that can handle URLs "
             "with of this scheme.  This should not include the '.lnav' suffix.")
         .with_pattern(R"(^[\w\-]+(?!\.lnav)$)")
         .for_field(&lnav::url_handler::scheme::p_handler),
@@ -1806,7 +1806,7 @@ static const struct json_path_container tuning_handlers = {
         .with_description("Settings related to capturing piped data")
         .with_children(piper_handlers),
     yajlpp::property_handler("file-vtab")
-        .with_description("Settings related to the lnav_file virtual-table")
+        .with_description("Settings related to the flnav_file virtual-table")
         .with_children(file_vtab_handlers),
     yajlpp::property_handler("logfile")
         .with_description("Settings related to log files")

@@ -2898,6 +2898,14 @@ com_reset_config(exec_context& ec,
     return Ok(retval);
 }
 
+// Background-prebuild support: when set, com_ssh_stats builds the report
+// without flipping into the SSH view, so pressing `0` later switches
+// instantly with no rebuild.  s_ssh_stats_cached_lines tracks the line
+// count the cached report was built for; if the log grows or shrinks the
+// next interactive (or prebuild) call will rebuild.
+static bool s_ssh_stats_prebuild_mode = false;
+static size_t s_ssh_stats_cached_lines = 0;
+
 static Result<std::string, lnav::console::user_message>
 com_ssh_stats(exec_context& ec,
               std::string cmdline,
@@ -2910,9 +2918,13 @@ com_ssh_stats(exec_context& ec,
         return Ok(std::string());
     }
 
+    const bool prebuild = s_ssh_stats_prebuild_mode;
+
     // If the SSH stats view is already showing, just dismiss it.
-    if (*lnav_data.ld_view_stack.top()
-        == &lnav_data.ld_views[LNV_SSH_STATS])
+    // (In prebuild mode we never toggle.)
+    if (!prebuild
+        && *lnav_data.ld_view_stack.top()
+            == &lnav_data.ld_views[LNV_SSH_STATS])
     {
         toggle_view(&lnav_data.ld_views[LNV_SSH_STATS]);
         return Ok(std::string());
@@ -2920,6 +2932,16 @@ com_ssh_stats(exec_context& ec,
 
     auto& lss = lnav_data.ld_log_source;
     const size_t line_count = lss.text_line_count();
+
+    // Fast path: report is already cached for the current log content.
+    // For interactive calls, just switch into the prebuilt view.
+    // For prebuild calls, nothing to do.
+    if (s_ssh_stats_cached_lines == line_count && line_count > 0) {
+        if (!prebuild) {
+            ensure_view(&lnav_data.ld_views[LNV_SSH_STATS]);
+        }
+        return Ok(std::string());
+    }
 
     // Background color for IOC-matched rows (Nord dark: #2e3440)
     static const auto IOC_BG = VC_BACKGROUND.value(
@@ -3092,7 +3114,8 @@ com_ssh_stats(exec_context& ec,
 
     // Show the panel immediately with a placeholder so the user sees it's working,
     // and kick off the Pac-Man animation in the bottom bar right away.
-    {
+    // (Skipped during background prebuild — we don't want to switch views.)
+    if (!prebuild) {
         attr_line_t placeholder;
         placeholder.append(" Computing SSH Traffic Flow Map"_h1);
         lnav_data.ld_ssh_stats_source.replace_with(placeholder);
@@ -3539,8 +3562,39 @@ com_ssh_stats(exec_context& ec,
 
     lnav_data.ld_ssh_stats_source.replace_with(report);
     lnav_data.ld_views[LNV_SSH_STATS].reload_data();
+    s_ssh_stats_cached_lines = line_count;
 
     return Ok(std::string());
+}
+
+// Public entry point for background SSH-stats prebuild.  Called from
+// rebuild_indexes_repeatedly() once the log content has settled.  No-op
+// when the report is already cached for the current line count, when
+// there are no log lines yet, when a scan is interruptible, or when
+// re-entered.
+void
+prewarm_ssh_stats()
+{
+    if (s_ssh_stats_prebuild_mode) {
+        return;
+    }
+    auto& lss = lnav_data.ld_log_source;
+    const size_t line_count = lss.text_line_count();
+    if (line_count == 0 || line_count == s_ssh_stats_cached_lines) {
+        return;
+    }
+    auto top = lnav_data.ld_view_stack.top();
+    if (top && *top == &lnav_data.ld_views[LNV_SSH_STATS]) {
+        // User is currently viewing it; the next interactive call will rebuild.
+        return;
+    }
+    s_ssh_stats_prebuild_mode = true;
+    std::vector<std::string> args = {"ssh-stats"};
+    auto res = com_ssh_stats(lnav_data.ld_exec_context, "ssh-stats", args);
+    s_ssh_stats_prebuild_mode = false;
+    if (res.isErr()) {
+        log_warning("ssh-stats prebuild failed");
+    }
 }
 
 // ---------------------------------------------------------------------------

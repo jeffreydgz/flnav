@@ -32,11 +32,19 @@
 
 #include "lnav.indexing.hh"
 
+#include "base/attr_line.hh"
+#include "base/string_attr_type.hh"
 #include "bound_tags.hh"
+#include "entity_extractor.hh"
+#include "entity_index.hh"
 #include "lnav.events.hh"
 #include "lnav.exec-phase.hh"
 #include "lnav.hh"
 #include "lnav_commands.hh"
+#include "log_data_helper.hh"
+
+// Background prebuild of the SSH Traffic Flow Map so pressing `0` is instant.
+void prewarm_ssh_stats();
 #include "service_tags.hh"
 #include "session_data.hh"
 #include "sql_util.hh"
@@ -69,20 +77,36 @@ public:
             off = total;
         }
 
+        // Track each file's progress so the bottom-status percentage
+        // reflects the *combined* loading state across every file in
+        // the view, instead of resetting 0->100% for each file.
+        auto& entry = this->lo_progress[lf];
+        entry.first = off;
+        entry.second = total;
+
+        file_off_t cum_off = 0;
+        file_ssize_t cum_total = 0;
+        for (const auto& kv : this->lo_progress) {
+            cum_off += kv.second.first;
+            cum_total += kv.second.second;
+        }
+        const bool all_done = (cum_off == cum_total);
+
         auto retval = lnav::progress_result_t::ok;
-        if (((off == total) && (this->lo_last_offset != off))
+        if ((all_done && (this->lo_last_offset != cum_off))
             || ui_periodic_timer::singleton().time_to_update(index_counter))
         {
-            if (off == total) {
+            if (all_done) {
                 lnav_data.ld_bottom_source.update_loading(0, 0);
+                this->lo_progress.clear();
             } else {
-                lnav_data.ld_bottom_source.update_loading(off, total);
+                lnav_data.ld_bottom_source.update_loading(cum_off, cum_total);
             }
             lnav_data.ld_status[LNS_BOTTOM].set_needs_update();
             if (do_observer_update(lf) == lnav::progress_result_t::interrupt) {
                 retval = lnav::progress_result_t::interrupt;
             }
-            this->lo_last_offset = off;
+            this->lo_last_offset = cum_off;
         }
 
         if (!lnav_data.ld_looping) {
@@ -92,6 +116,8 @@ public:
     }
 
     off_t lo_last_offset{0};
+    std::unordered_map<const logfile*, std::pair<file_off_t, file_ssize_t>>
+        lo_progress;
 };
 
 lnav::progress_result_t
@@ -515,6 +541,10 @@ rebuild_indexes_repeatedly()
         }
         log_info("continuing to rebuild indexes...");
     }
+
+    // Prebuild the SSH Traffic Flow Map in the background once the log
+    // content has settled.  No-op if cached for the current line count.
+    prewarm_ssh_stats();
 }
 
 bool
@@ -627,5 +657,108 @@ rescan_files(bool req)
             lnav_data.ld_status_refresher(lnav::func::op_type::interactive);
         }
     } while (!done && lnav_data.ld_looping);
+    return true;
+}
+
+// --- Entity index background builder ---
+
+extern entity_extractor g_entity_extractor;
+extern entity_index g_entity_index;
+
+static vis_line_t s_entity_next_line{0};
+static vis_line_t s_entity_total_lines{0};
+static bool s_entity_index_valid{false};
+
+void
+invalidate_entity_index()
+{
+    s_entity_next_line = 0_vl;
+    s_entity_total_lines = 0_vl;
+    s_entity_index_valid = false;
+    g_entity_index.clear();
+}
+
+bool
+rebuild_entity_index(std::optional<ui_clock::time_point> deadline)
+{
+    auto& lss = lnav_data.ld_log_source;
+    auto* tc = &lnav_data.ld_views[LNV_LOG];
+    auto total = tc->get_inner_height();
+
+    if (total == 0) {
+        return true;
+    }
+
+    // Detect if new lines appeared (files grew)
+    if (total != s_entity_total_lines) {
+        // Keep what we have, just continue from where we left off
+        s_entity_total_lines = total;
+        s_entity_index_valid = false;
+    }
+
+    if (s_entity_index_valid) {
+        return true;
+    }
+
+    // Show progress
+    lnav_data.ld_bottom_source.update_loading(
+        static_cast<file_off_t>(s_entity_next_line),
+        static_cast<file_ssize_t>(total),
+        "Indexing entities");
+    lnav_data.ld_status[LNS_BOTTOM].set_needs_update();
+
+    while (s_entity_next_line < total) {
+        if (deadline && ui_clock::now() >= *deadline) {
+            return false;
+        }
+
+        log_data_helper ldh(lss);
+        if (ldh.load_line(s_entity_next_line)) {
+            auto& sa = ldh.ldh_line_attrs;
+            auto& sbr = ldh.ldh_line_values.lvv_sbr;
+            auto body_range = find_string_attr_range(sa, &SA_BODY);
+
+            std::string body_text;
+            if (body_range.is_valid()) {
+                auto body_sf = sbr.to_string_fragment(body_range);
+                body_text = body_sf.to_string();
+            } else {
+                body_text.assign(sbr.get_data(), sbr.length());
+            }
+
+            auto entities
+                = g_entity_extractor.extract_from_body(body_text);
+
+            // Also extract from structured fields (hostname, pid, etc.)
+            for (const auto& lv : ldh.ldh_line_values.lvv_values) {
+                auto field_name = lv.lv_meta.lvm_name.to_string();
+                auto field_value = lv.to_string();
+                if (field_value.empty()) {
+                    continue;
+                }
+                auto field_entities
+                    = g_entity_extractor.infer_from_field(
+                        field_name, field_value);
+                for (auto& fe : field_entities) {
+                    entities.emplace_back(std::move(fe));
+                }
+            }
+
+            if (!entities.empty()) {
+                auto cl = lss.at(s_entity_next_line);
+                g_entity_index.insert(
+                    static_cast<log_line_t>(cl),
+                    entities);
+            }
+        }
+
+        ++s_entity_next_line;
+    }
+
+    // Done — clear loading indicator
+    s_entity_index_valid = true;
+    lnav_data.ld_bottom_source.update_loading(0, 0);
+    lnav_data.ld_status[LNS_BOTTOM].set_needs_update();
+
     return true;
 }

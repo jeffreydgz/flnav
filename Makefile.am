@@ -5,7 +5,7 @@ SUBDIRS = tools src test
 
 noinst_SCRIPTS = TESTS_ENVIRONMENT
 
-dist_man_MANS = lnav.1
+dist_man_MANS = flnav.1
 
 EXTRA_DIST = \
     docs/lnav-architecture.png \

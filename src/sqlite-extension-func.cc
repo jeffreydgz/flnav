@@ -73,6 +73,7 @@ sqlite_registration_func_t sqlite_registration_funcs[] = {
     json_extension_functions,
     yaml_extension_functions,
     time_extension_functions,
+    entity_extension_functions,
 
     nullptr,
 };

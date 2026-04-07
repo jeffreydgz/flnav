@@ -18,9 +18,9 @@ SUBDIRS = \
     formats/logfmt \
     .
 
-bin_PROGRAMS = lnav
+bin_PROGRAMS = flnav
 
-noinst_PROGRAMS = lnav-test
+noinst_PROGRAMS = flnav-test
 
 noinst_LIBRARIES = libdiag.a libdatascanner.a
 
@@ -493,6 +493,7 @@ libdiag_a_SOURCES = \
 	cmd.parser.cc \
 	cmds.bookmarks.cc \
 	cmds.breakpoints.cc \
+	cmds.correlation.cc \
 	cmds.display.cc \
 	cmds.filtering.cc \
 	cmds.io.cc \
@@ -501,12 +502,19 @@ libdiag_a_SOURCES = \
 	collation-functions.cc \
 	column_namer.cc \
 	command_executor.cc \
+	correlation_engine.cc \
+	correlation_rule.cc \
 	crashd.client.cc \
 	curl_looper.cc \
 	db_sub_source.cc \
 	document.sections.cc \
 	dump_internals.cc \
 	elem_to_json.cc \
+	entity_extractor.cc \
+	entity_graph_vtab_impl.cc \
+	entity_index.cc \
+	entity_sql_funcs.cc \
+	entity_vtab_impl.cc \
 	environ_vtab.cc \
 	ext.longpoll.cc \
 	extension-functions.cc \
@@ -628,16 +636,16 @@ else
 WIN_OBJS =
 endif
 
-lnav_SOURCES = \
+flnav_SOURCES = \
     lnav.cc \
     lnav.events.cc \
     lnav.indexing.cc \
     lnav.management_cli.cc \
     $(PLUGIN_SRCS)
 
-lnav_LDADD = $(WIN_OBJS) $(LDADD)
+flnav_LDADD = $(WIN_OBJS) $(LDADD)
 
-lnav_test_SOURCES = \
+flnav_test_SOURCES = \
     lnav.cc \
     lnav.events.cc \
     lnav.indexing.cc \
@@ -706,9 +714,9 @@ uncrusty:
 		$(HEADERS))
 
 if !CROSS_COMPILING
-all-local: $(LNAV_BUILT_FILES) lnav $(RUST_DEPS)
+all-local: $(LNAV_BUILT_FILES) flnav $(RUST_DEPS)
 	if test -w $(srcdir)/internals; then \
-		env DUMP_INTERNALS_DIR=$(srcdir)/internals DUMP_CRASH=1 ./lnav Makefile; \
+		env DUMP_INTERNALS_DIR=$(srcdir)/internals DUMP_CRASH=1 ./flnav Makefile; \
 		mv $(srcdir)/internals/*.schema.json $(top_srcdir)/docs/schemas; \
 	fi
 else

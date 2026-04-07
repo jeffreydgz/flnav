@@ -30,6 +30,7 @@
  */
 
 #include <future>
+#include <mutex>
 #include <vector>
 
 #include <unistd.h>
@@ -247,6 +248,14 @@ extract(const std::string& filename, const extract_cb& cb)
 {
     static const int FLAGS = ARCHIVE_EXTRACT_TIME | ARCHIVE_EXTRACT_PERM
         | ARCHIVE_EXTRACT_ACL | ARCHIVE_EXTRACT_FFLAGS;
+
+    // libarchive's archive_write_disk_set_standard_lookup() relies on
+    // non-reentrant pwd/grp lookups and other static initialization that
+    // is not thread-safe.  When multiple archives are opened in parallel
+    // (e.g. `flnav *.zip`), concurrent calls into libarchive can crash.
+    // Serialize the entire extract() to keep things safe.
+    static std::mutex extract_mutex;
+    std::lock_guard<std::mutex> extract_guard(extract_mutex);
 
     std::error_code ec;
     auto tmp_path = filename_to_tmp_path(filename);

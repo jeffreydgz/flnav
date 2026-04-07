@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2022, Timothy Stack
+ * Copyright (c) 2024, Timothy Stack
  *
  * All rights reserved.
  *
@@ -25,40 +25,16 @@
  * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-
-#ifndef lnav_indexing_hh
-#define lnav_indexing_hh
-
-#include "file_collection.hh"
-#include "logfile_fwd.hh"
-
-void rebuild_hist();
-
-struct rebuild_indexes_result_t {
-    size_t rir_changes{0};
-    bool rir_completed{true};
-    bool rir_rescan_needed{false};
-};
-
-rebuild_indexes_result_t rebuild_indexes(
-    std::optional<ui_clock::time_point> deadline = std::nullopt);
-void rebuild_indexes_repeatedly();
-bool rescan_files(bool required = false);
-bool update_active_files(file_collection& new_files);
-lnav::progress_result_t do_observer_update(const logfile* lf);
-
-/**
- * Incrementally extract and index entities from log lines.
- * Call repeatedly from the main loop — processes lines until
- * the deadline is reached, then returns.
  *
- * @return true when all lines have been indexed.
+ * @file entity_sql_funcs.hh
  */
-bool rebuild_entity_index(
-    std::optional<ui_clock::time_point> deadline = std::nullopt);
 
-/** Reset the entity indexer so it re-scans from the beginning. */
-void invalidate_entity_index();
+#ifndef lnav_entity_sql_funcs_hh
+#define lnav_entity_sql_funcs_hh
+
+#include "sqlite-extension-func.hh"
+
+int entity_extension_functions(struct FuncDef** basic_funcs,
+                               struct FuncDefAgg** agg_funcs);
 
 #endif

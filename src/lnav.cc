@@ -89,6 +89,9 @@
 #include "CLI/CLI.hpp"
 #include "date/tz.h"
 #include "dump_internals.hh"
+#include "entity_graph_vtab_impl.hh"
+#include "entity_index.hh"
+#include "entity_vtab_impl.hh"
 #include "environ_vtab.hh"
 #include "ext.longpoll.hh"
 #include "file_converter_manager.hh"
@@ -441,7 +444,7 @@ command_arg_help()
         .append("   ")
         .append("|"_symbol)
         .append(" - ")
-        .append("an lnav script    (e.g. |rename-stdin foo)\n");
+        .append("an flnav script   (e.g. |rename-stdin foo)\n");
 }
 
 static void
@@ -451,7 +454,7 @@ usage()
 
     ex1_term.append(lnav::roles::ok("$"))
         .append(" ")
-        .append(lnav::roles::file("lnav"))
+        .append(lnav::roles::file("flnav"))
         .pad_to(40)
         .with_attr_for_all(VC_ROLE.value(role_t::VCR_QUOTED_CODE));
 
@@ -459,7 +462,7 @@ usage()
 
     ex2_term.append(lnav::roles::ok("$"))
         .append(" ")
-        .append(lnav::roles::file("lnav"))
+        .append(lnav::roles::file("flnav"))
         .append(" ")
         .append(lnav::roles::file("/var/log"))
         .pad_to(40)
@@ -469,7 +472,7 @@ usage()
 
     ex3_term.append(lnav::roles::ok("$"))
         .append(" ")
-        .append(lnav::roles::file("lnav"))
+        .append(lnav::roles::file("flnav"))
         .append(" ")
         .append("-e"_symbol)
         .append(" '")
@@ -526,7 +529,7 @@ make it easier to navigate through files quickly.
         .append("  ")
         .append("-W"_symbol)
         .append("         ")
-        .append("Print warnings related to lnav's configuration.\n")
+        .append("Print warnings related to flnav's configuration.\n")
         .append("  ")
         .append("-u"_symbol)
         .append("         ")
@@ -620,7 +623,7 @@ make it easier to navigate through files quickly.
         .append("-m"_symbol)
         .append("         ")
         .append(R"(Switch to the management command-line mode.  This mode
-             is used to work with lnav's configuration.
+             is used to work with flnav's configuration.
 )")
         .append("\n")
         .append("Examples"_h2)
@@ -651,11 +654,11 @@ make it easier to navigate through files quickly.
         .append("\n    ")
         .append(":open_file_folder:"_emoji)
         .append(" ")
-        .append(lnav::roles::file("/etc/lnav"))
+        .append(lnav::roles::file("/etc/flnav"))
         .append("\n    ")
         .append(":open_file_folder:"_emoji)
         .append(" ")
-        .append(lnav::roles::file(SYSCONFDIR "/lnav"))
+        .append(lnav::roles::file(SYSCONFDIR "/flnav"))
         .append("\n ")
         .append("\u2022"_list_glyph)
         .append(" Configuration, session, and format files are stored in:\n")
@@ -1324,7 +1327,7 @@ looper()
     if (lnav_config.lc_mouse_mode == lnav_mouse_mode::disabled) {
         auto mouse_note = prepare_stmt(lnav_data.ld_db, R"(
 INSERT INTO lnav_user_notifications (id, priority, expiration, message)
-VALUES ('org.lnav.mouse-support', -1, DATETIME('now', '+1 minute'),
+VALUES ('org.flnav.mouse-support', -1, DATETIME('now', '+1 minute'),
         'Press <span class="-lnav_status-styles_hotkey">F2</span> to enable mouse support');
 )");
         if (mouse_note.isErr()) {
@@ -2026,6 +2029,14 @@ VALUES ('org.lnav.mouse-support', -1, DATETIME('now', '+1 minute'),
                               loop_count);
                     rescan_needed = true;
                     next_rescan_time = loop_deadline = ui_now;
+                }
+                if (rebuild_res.rir_changes > 0) {
+                    invalidate_entity_index();
+                }
+                if (rebuild_res.rir_completed
+                    && ui_clock::now() < loop_deadline)
+                {
+                    rebuild_entity_index(loop_deadline);
                 }
             }
         } else {
@@ -2857,8 +2868,8 @@ main(int argc, char* argv[])
     // output for lnav to display.  One example would be `man`, as
     // in `:sh man ls`.
     setenv("PAGER", "cat", 1);
-    setenv("LNAV_HOME_DIR", lnav::paths::dotlnav().c_str(), 1);
-    setenv("LNAV_WORK_DIR", lnav::paths::workdir().c_str(), 1);
+    setenv("FLNAV_HOME_DIR", lnav::paths::dotlnav().c_str(), 1);
+    setenv("FLNAV_WORK_DIR", lnav::paths::workdir().c_str(), 1);
 
     try {
         auto& safe_options_hier
@@ -2970,6 +2981,18 @@ main(int argc, char* argv[])
     lnav::events::register_events_tab(lnav_data.ld_db.in());
     register_log_stmt_vtab(lnav_data.ld_db.in());
     register_log_gaps_vtab(lnav_data.ld_db.in());
+
+    {
+        extern entity_index g_entity_index;
+        register_entity_vtab(
+            lnav_data.ld_db.in(),
+            &g_entity_index,
+            &lnav_data.ld_log_source);
+        register_entity_graph_vtab(
+            lnav_data.ld_db.in(),
+            &g_entity_index,
+            &lnav_data.ld_log_source);
+    }
 
 #ifdef HAVE_RUST_DEPS
     {
@@ -3300,9 +3323,9 @@ SELECT tbl_name FROM sqlite_master WHERE sql LIKE 'CREATE VIRTUAL TABLE%'
     lnav_data.ld_config_paths.insert(lnav_data.ld_config_paths.begin(),
                                      lnav::paths::dotlnav());
     lnav_data.ld_config_paths.insert(lnav_data.ld_config_paths.begin(),
-                                     SYSCONFDIR "/lnav");
+                                     SYSCONFDIR "/flnav");
     lnav_data.ld_config_paths.insert(lnav_data.ld_config_paths.begin(),
-                                     "/etc/lnav");
+                                     "/etc/flnav");
 
     if (!lnav_data.ld_debug_log_name.empty()
         && lnav_data.ld_debug_log_name != DEFAULT_DEBUG_LOG)
@@ -3363,14 +3386,14 @@ SELECT tbl_name FROM sqlite_master WHERE sql LIKE 'CREATE VIRTUAL TABLE%'
                       .append(
                           " option expects one or more log format "
                           "definition "
-                          "files to install in your lnav "
+                          "files to install in your flnav "
                           "configuration "
                           "directory")
                       .move();
             const auto install_help
                 = attr_line_t(
                       "log format definitions are JSON files that "
-                      "tell lnav "
+                      "tell flnav "
                       "how to understand log files\n")
                       .append(
                           "See: "
@@ -3806,6 +3829,7 @@ SELECT tbl_name FROM sqlite_master WHERE sql LIKE 'CREATE VIRTUAL TABLE%'
     init_lnav_filtering_commands(lnav_commands);
     init_lnav_io_commands(lnav_commands);
     init_lnav_metadata_commands(lnav_commands);
+    init_lnav_correlation_commands(lnav_commands);
     init_lnav_scripting_commands(lnav_commands);
 
     lnav_data.ld_looping = true;
