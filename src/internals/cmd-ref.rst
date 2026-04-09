@@ -99,30 +99,6 @@
 ----
 
 
-.. _bind_entity:
-
-:bind-entity *field_name* *entity_type*
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-  Manually declare a field's entity type for the session
-
-  **Parameters**
-    * **field_name\*** --- The field to bind
-    * **entity_type\*** --- The entity type (ip-address, username, etc.)
-
-  **Examples**
-    To bind src_ip as an IP address:
-
-    .. code-block::  lnav
-
-      :bind-entity src_ip ip-address
-
-  **See Also**
-    :ref:`correlate`, :ref:`entity_count`, :ref:`entity_value`, :ref:`extract_entities`, :ref:`extract_entities`, :ref:`has_entity`, :ref:`index_entities`
-
-----
-
-
 .. _breakpoint:
 
 :breakpoint *point*
@@ -398,42 +374,6 @@
   **Parameters**
     * **zone\*** --- The timezone name
 
-
-----
-
-
-.. _correlate:
-
-:correlate *value*
-^^^^^^^^^^^^^^^^^^
-
-  Mark all log lines containing the given entity value
-
-  **Parameters**
-    * **value\*** --- The entity value to trace across all logs
-
-  **Examples**
-    To find all lines with a specific IP:
-
-    .. code-block::  lnav
-
-      :correlate 10.0.1.47
-
-  **See Also**
-    :ref:`bind_entity`, :ref:`correlation_rules`, :ref:`entity_count`, :ref:`entity_value`, :ref:`extract_entities`, :ref:`extract_entities`, :ref:`has_entity`, :ref:`index_entities`, :ref:`index_entities`, :ref:`run_correlations`
-
-----
-
-
-.. _correlation_rules:
-
-:correlation-rules
-^^^^^^^^^^^^^^^^^^
-
-  List all loaded correlation rules
-
-  **See Also**
-    :ref:`correlate`, :ref:`index_entities`, :ref:`run_correlations`
 
 ----
 
@@ -756,19 +696,6 @@
 ----
 
 
-.. _extract_entities:
-
-:extract-entities
-^^^^^^^^^^^^^^^^^
-
-  Extract and display entities from the current log line
-
-  **See Also**
-    :ref:`bind_entity`, :ref:`correlate`, :ref:`entity_count`, :ref:`entity_value`, :ref:`extract_entities`, :ref:`has_entity`, :ref:`index_entities`
-
-----
-
-
 .. _filter_expr:
 
 :filter-expr *expr*
@@ -1082,19 +1009,6 @@
 
   **See Also**
     :ref:`clear_all_sticky_headers`, :ref:`clear_highlight_field`, :ref:`enable_word_wrap`, :ref:`hide_fields`, :ref:`normalize_timestamps`, :ref:`set_text_view_mode`, :ref:`ssh_stats`, :ref:`toggle_sticky_header`
-
-----
-
-
-.. _index_entities:
-
-:index-entities
-^^^^^^^^^^^^^^^
-
-  Scan all visible log lines and build the entity index for use with :correlate and the lnav_entities table
-
-  **See Also**
-    :ref:`bind_entity`, :ref:`correlate`, :ref:`correlate`, :ref:`correlation_rules`, :ref:`entity_count`, :ref:`entity_value`, :ref:`extract_entities`, :ref:`extract_entities`, :ref:`has_entity`, :ref:`run_correlations`
 
 ----
 
@@ -1536,19 +1450,6 @@
 
   Reset the session state, clearing all filters, highlights, and bookmarks
 
-
-----
-
-
-.. _run_correlations:
-
-:run-correlations
-^^^^^^^^^^^^^^^^^
-
-  Evaluate all loaded correlation rules and tag matches
-
-  **See Also**
-    :ref:`correlate`, :ref:`correlation_rules`, :ref:`index_entities`
 
 ----
 

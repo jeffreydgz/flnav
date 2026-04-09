@@ -493,7 +493,6 @@ libdiag_a_SOURCES = \
 	cmd.parser.cc \
 	cmds.bookmarks.cc \
 	cmds.breakpoints.cc \
-	cmds.correlation.cc \
 	cmds.display.cc \
 	cmds.filtering.cc \
 	cmds.io.cc \
@@ -502,19 +501,12 @@ libdiag_a_SOURCES = \
 	collation-functions.cc \
 	column_namer.cc \
 	command_executor.cc \
-	correlation_engine.cc \
-	correlation_rule.cc \
 	crashd.client.cc \
 	curl_looper.cc \
 	db_sub_source.cc \
 	document.sections.cc \
 	dump_internals.cc \
 	elem_to_json.cc \
-	entity_extractor.cc \
-	entity_graph_vtab_impl.cc \
-	entity_index.cc \
-	entity_sql_funcs.cc \
-	entity_vtab_impl.cc \
 	environ_vtab.cc \
 	ext.longpoll.cc \
 	extension-functions.cc \

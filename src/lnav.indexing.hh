@@ -48,17 +48,4 @@ bool rescan_files(bool required = false);
 bool update_active_files(file_collection& new_files);
 lnav::progress_result_t do_observer_update(const logfile* lf);
 
-/**
- * Incrementally extract and index entities from log lines.
- * Call repeatedly from the main loop — processes lines until
- * the deadline is reached, then returns.
- *
- * @return true when all lines have been indexed.
- */
-bool rebuild_entity_index(
-    std::optional<ui_clock::time_point> deadline = std::nullopt);
-
-/** Reset the entity indexer so it re-scans from the beginning. */
-void invalidate_entity_index();
-
 #endif

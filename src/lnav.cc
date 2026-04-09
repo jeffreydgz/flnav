@@ -89,9 +89,6 @@
 #include "CLI/CLI.hpp"
 #include "date/tz.h"
 #include "dump_internals.hh"
-#include "entity_graph_vtab_impl.hh"
-#include "entity_index.hh"
-#include "entity_vtab_impl.hh"
 #include "environ_vtab.hh"
 #include "ext.longpoll.hh"
 #include "file_converter_manager.hh"
@@ -2030,14 +2027,6 @@ VALUES ('org.flnav.mouse-support', -1, DATETIME('now', '+1 minute'),
                     rescan_needed = true;
                     next_rescan_time = loop_deadline = ui_now;
                 }
-                if (rebuild_res.rir_changes > 0) {
-                    invalidate_entity_index();
-                }
-                if (rebuild_res.rir_completed
-                    && ui_clock::now() < loop_deadline)
-                {
-                    rebuild_entity_index(loop_deadline);
-                }
             }
         } else {
             lnav_data.ld_files_view.set_overlay_needs_update();
@@ -2982,18 +2971,6 @@ main(int argc, char* argv[])
     register_log_stmt_vtab(lnav_data.ld_db.in());
     register_log_gaps_vtab(lnav_data.ld_db.in());
 
-    {
-        extern entity_index g_entity_index;
-        register_entity_vtab(
-            lnav_data.ld_db.in(),
-            &g_entity_index,
-            &lnav_data.ld_log_source);
-        register_entity_graph_vtab(
-            lnav_data.ld_db.in(),
-            &g_entity_index,
-            &lnav_data.ld_log_source);
-    }
-
 #ifdef HAVE_RUST_DEPS
     {
         lnav_rs_ext::init_ext();
@@ -3829,7 +3806,6 @@ SELECT tbl_name FROM sqlite_master WHERE sql LIKE 'CREATE VIRTUAL TABLE%'
     init_lnav_filtering_commands(lnav_commands);
     init_lnav_io_commands(lnav_commands);
     init_lnav_metadata_commands(lnav_commands);
-    init_lnav_correlation_commands(lnav_commands);
     init_lnav_scripting_commands(lnav_commands);
 
     lnav_data.ld_looping = true;

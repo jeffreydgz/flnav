@@ -81,7 +81,6 @@ public:
         intern_string_t vd_rewrite_src_name;
         std::optional<size_t> vd_line_format_index;
         bool vd_is_desc_field{false};
-        std::string vd_entity_type;
         std::map<const intern_string_t, highlighter_def>
             vd_highlighter_patterns;
     };

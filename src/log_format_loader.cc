@@ -728,14 +728,6 @@ static const struct json_path_container value_def_handlers = {
         .with_description("A description of the field")
         .for_field(&external_log_format::value_def::vd_description),
 
-    yajlpp::property_handler("entity-type")
-        .with_synopsis("<type>")
-        .with_description(
-            "The semantic entity type for this field (e.g., ip-address, "
-            "username, hostname, session-id, hash, email, url, port, "
-            "mac-address, file-path, pid)")
-        .for_field(&external_log_format::value_def::vd_entity_type),
-
     yajlpp::property_handler("highlights")
         .with_description("The set of highlight definitions")
         .with_children(value_highlight_handlers),
