@@ -1490,9 +1490,12 @@ filter_stack::get_mask(uint32_t& filter_mask)
 
 void
 filter_stack::get_enabled_mask(uint32_t& filter_in_mask,
-                               uint32_t& filter_out_mask)
+                               uint32_t& filter_out_mask,
+                               uint32_t& filter_in_and_mask,
+                               uint32_t& filter_out_and_mask)
 {
-    filter_in_mask = filter_out_mask = 0;
+    filter_in_mask = filter_out_mask = filter_in_and_mask = filter_out_and_mask
+        = 0;
     for (auto& iter : *this) {
         std::shared_ptr<text_filter> tf = iter;
 
@@ -1506,8 +1509,14 @@ filter_stack::get_enabled_mask(uint32_t& filter_in_mask,
                 case text_filter::EXCLUDE:
                     filter_out_mask |= bit;
                     break;
+                case text_filter::EXCLUDE_AND:
+                    filter_out_and_mask |= bit;
+                    break;
                 case text_filter::INCLUDE:
                     filter_in_mask |= bit;
+                    break;
+                case text_filter::INCLUDE_AND:
+                    filter_in_and_mask |= bit;
                     break;
                 default:
                     ensure(0);

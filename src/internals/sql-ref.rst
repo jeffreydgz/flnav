@@ -1336,55 +1336,6 @@ endswith(*str*, *suffix*)
 ----
 
 
-.. _entity_count:
-
-entity_count(*text*)
-^^^^^^^^^^^^^^^^^^^^
-
-  Count the number of entities in text
-
-  **Parameters**
-    * **text\*** --- The text to scan for entities
-
-  **Examples**
-    To count entities in a log line:
-
-    .. code-block::  custsqlite
-
-      ;SELECT entity_count('Connection from 10.0.1.1 to server.example.com')
-      2
-
-  **See Also**
-    :ref:`bind_entity`, :ref:`correlate`, :ref:`entity_value`, :ref:`entity_value`, :ref:`extract_entities`, :ref:`extract_entities`, :ref:`extract_entities`, :ref:`has_entity`, :ref:`has_entity`, :ref:`index_entities`
-
-----
-
-
-.. _entity_value:
-
-entity_value(*text*, *entity_type*)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-  Extract the first entity of the given type from text
-
-  **Parameters**
-    * **text\*** --- The text to scan
-    * **entity_type\*** --- The entity type to extract (e.g., 'ip-address', 'username')
-
-  **Examples**
-    To extract the first IP address:
-
-    .. code-block::  custsqlite
-
-      ;SELECT entity_value('Login from 10.0.0.1', 'ip-address')
-      10.0.0.1
-
-  **See Also**
-    :ref:`bind_entity`, :ref:`correlate`, :ref:`entity_count`, :ref:`entity_count`, :ref:`extract_entities`, :ref:`extract_entities`, :ref:`extract_entities`, :ref:`has_entity`, :ref:`has_entity`, :ref:`index_entities`
-
-----
-
-
 .. _exp:
 
 exp(*x*)
@@ -1438,30 +1389,6 @@ extract(*str*)
 
   **See Also**
     :ref:`anonymize`, :ref:`char`, :ref:`charindex`, :ref:`concat_ws`, :ref:`concat`, :ref:`decode`, :ref:`encode`, :ref:`endswith`, :ref:`fuzzy_match`, :ref:`group_concat`, :ref:`group_spooky_hash_agg`, :ref:`gunzip`, :ref:`gzip`, :ref:`humanize_duration`, :ref:`humanize_file_size`, :ref:`humanize_id`, :ref:`instr`, :ref:`leftstr`, :ref:`length`, :ref:`logfmt2json`, :ref:`lower`, :ref:`ltrim`, :ref:`normalize_ts`, :ref:`padc`, :ref:`padl`, :ref:`padr`, :ref:`parse_url`, :ref:`pretty_print`, :ref:`printf`, :ref:`proper`, :ref:`regexp_capture_into_json`, :ref:`regexp_capture`, :ref:`regexp_match`, :ref:`regexp_replace`, :ref:`replace`, :ref:`replicate`, :ref:`reverse`, :ref:`rightstr`, :ref:`rtrim`, :ref:`sparkline`, :ref:`spooky_hash`, :ref:`startswith`, :ref:`strfilter`, :ref:`substr`, :ref:`timezone`, :ref:`trim`, :ref:`unhex`, :ref:`unicode`, :ref:`unparse_url`, :ref:`upper`, :ref:`xpath`
-
-----
-
-
-.. _extract_entities:
-
-extract_entities(*text*)
-^^^^^^^^^^^^^^^^^^^^^^^^
-
-  Extract semantic entities (IPs, usernames, hashes, etc.) from text
-
-  **Parameters**
-    * **text\*** --- The text to extract entities from
-
-  **Examples**
-    To extract entities from a log message:
-
-    .. code-block::  custsqlite
-
-      ;SELECT extract_entities('Failed login from 192.168.1.1 user admin')
-      [{"entity_type":"ip-address","entity_value":"192.168.1.1","start_offset":18,"end_offset":29,"confidence":0.850000}]
-
-  **See Also**
-    :ref:`bind_entity`, :ref:`correlate`, :ref:`entity_count`, :ref:`entity_count`, :ref:`entity_value`, :ref:`entity_value`, :ref:`extract_entities`, :ref:`has_entity`, :ref:`has_entity`, :ref:`index_entities`
 
 ----
 
@@ -1773,31 +1700,6 @@ gzip(*value*)
 
   **See Also**
     :ref:`anonymize`, :ref:`char`, :ref:`charindex`, :ref:`concat_ws`, :ref:`concat`, :ref:`decode`, :ref:`encode`, :ref:`endswith`, :ref:`extract`, :ref:`fuzzy_match`, :ref:`group_concat`, :ref:`group_spooky_hash_agg`, :ref:`gunzip`, :ref:`humanize_duration`, :ref:`humanize_file_size`, :ref:`humanize_id`, :ref:`instr`, :ref:`leftstr`, :ref:`length`, :ref:`logfmt2json`, :ref:`lower`, :ref:`ltrim`, :ref:`normalize_ts`, :ref:`padc`, :ref:`padl`, :ref:`padr`, :ref:`parse_url`, :ref:`pretty_print`, :ref:`printf`, :ref:`proper`, :ref:`regexp_capture_into_json`, :ref:`regexp_capture`, :ref:`regexp_match`, :ref:`regexp_replace`, :ref:`replace`, :ref:`replicate`, :ref:`reverse`, :ref:`rightstr`, :ref:`rtrim`, :ref:`sparkline`, :ref:`spooky_hash`, :ref:`startswith`, :ref:`strfilter`, :ref:`substr`, :ref:`timezone`, :ref:`trim`, :ref:`unhex`, :ref:`unicode`, :ref:`unparse_url`, :ref:`upper`, :ref:`xpath`
-
-----
-
-
-.. _has_entity:
-
-has_entity(*text*, *entity_type*)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-  Check if text contains an entity of the given type
-
-  **Parameters**
-    * **text\*** --- The text to scan
-    * **entity_type\*** --- The entity type to look for (e.g., 'ip-address', 'email')
-
-  **Examples**
-    To check for IP addresses:
-
-    .. code-block::  custsqlite
-
-      ;SELECT has_entity('Login from 10.0.0.1', 'ip-address')
-      1
-
-  **See Also**
-    :ref:`bind_entity`, :ref:`correlate`, :ref:`entity_count`, :ref:`entity_count`, :ref:`entity_value`, :ref:`entity_value`, :ref:`extract_entities`, :ref:`extract_entities`, :ref:`extract_entities`, :ref:`index_entities`
 
 ----
 

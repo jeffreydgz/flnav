@@ -41,7 +41,7 @@ extern char** environ;
 
 const char* const ENVIRON_CREATE_STMT = R"(
 -- Access lnav's environment variables through this table.
-CREATE TABLE lnav_db.environ (
+CREATE TABLE flnav_db.environ (
     name TEXT PRIMARY KEY,
     value TEXT
 );
@@ -332,7 +332,7 @@ register_environ_vtab(sqlite3* db)
     ensure(rc == SQLITE_OK);
     if ((rc = sqlite3_exec(
              db,
-             "CREATE VIRTUAL TABLE lnav_db.environ USING environ_vtab_impl()",
+             "CREATE VIRTUAL TABLE flnav_db.environ USING environ_vtab_impl()",
              nullptr,
              nullptr,
              errmsg.out()))

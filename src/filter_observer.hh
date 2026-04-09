@@ -63,13 +63,20 @@ public:
 
     bool excluded(uint32_t filter_in_mask,
                   uint32_t filter_out_mask,
+                  uint32_t filter_in_and_mask,
+                  uint32_t filter_out_and_mask,
                   size_t offset) const
     {
+        auto line_mask = this->lfo_filter_state.tfs_mask[offset];
         bool filtered_in = (filter_in_mask == 0)
-            || (this->lfo_filter_state.tfs_mask[offset] & filter_in_mask) != 0;
-        bool filtered_out
-            = (this->lfo_filter_state.tfs_mask[offset] & filter_out_mask) != 0;
-        return !filtered_in || filtered_out;
+            || (line_mask & filter_in_mask) != 0;
+        bool filtered_in_and = (filter_in_and_mask == 0)
+            || (line_mask & filter_in_and_mask) == filter_in_and_mask;
+        bool filtered_out = (line_mask & filter_out_mask) != 0;
+        bool filtered_out_and = (filter_out_and_mask != 0)
+            && (line_mask & filter_out_and_mask) == filter_out_and_mask;
+        return !filtered_in || !filtered_in_and || filtered_out
+            || filtered_out_and;
     }
 
     size_t get_min_count(size_t max) const;

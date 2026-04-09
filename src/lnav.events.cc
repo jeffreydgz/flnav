@@ -115,13 +115,13 @@ int
 register_events_tab(sqlite3* db)
 {
     static constexpr auto* CREATE_EVENTS_TAB_SQL = R"(
-CREATE TABLE lnav_db.lnav_events (
+CREATE TABLE flnav_db.lnav_events (
    ts TEXT NOT NULL DEFAULT(strftime('%Y-%m-%dT%H:%M:%f', 'now')),
    content TEXT
 )
 )";
     static constexpr auto* DELETE_EVENTS_TRIGGER_SQL = R"(
-CREATE TRIGGER lnav_db.lnav_events_cleaner AFTER INSERT ON lnav_db.lnav_events
+CREATE TRIGGER flnav_db.lnav_events_cleaner AFTER INSERT ON flnav_db.lnav_events
 BEGIN
   DELETE FROM lnav_events WHERE rowid <= NEW.rowid - 1000;
 END

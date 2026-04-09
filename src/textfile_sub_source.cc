@@ -440,16 +440,19 @@ textfile_sub_source::text_filters_changed()
     }
 
     auto* lfo = (line_filter_observer*) lf->get_logline_observer();
-    uint32_t filter_in_mask, filter_out_mask;
+    uint32_t filter_in_mask, filter_out_mask, filter_in_and_mask,
+        filter_out_and_mask;
 
     lfo->clear_deleted_filter_state();
     lf->reobserve_from(lf->begin() + lfo->get_min_count(lf->size()));
 
-    this->get_filters().get_enabled_mask(filter_in_mask, filter_out_mask);
+    this->get_filters().get_enabled_mask(
+        filter_in_mask, filter_out_mask, filter_in_and_mask,
+        filter_out_and_mask);
     lfo->lfo_filter_state.tfs_index.clear();
     for (uint32_t lpc = 0; lpc < lf->size(); lpc++) {
         if (this->tss_apply_filters) {
-            if (lfo->excluded(filter_in_mask, filter_out_mask, lpc)) {
+            if (lfo->excluded(filter_in_mask, filter_out_mask, filter_in_and_mask, filter_out_and_mask, lpc)) {
                 continue;
             }
             if (lf->has_line_metadata()) {
@@ -923,14 +926,16 @@ textfile_sub_source::rescan_files(textfile_sub_source::scan_callback& callback,
                 }
             }
 
-            uint32_t filter_in_mask, filter_out_mask;
+            uint32_t filter_in_mask, filter_out_mask, filter_in_and_mask,
+                filter_out_and_mask;
 
-            this->get_filters().get_enabled_mask(filter_in_mask,
-                                                 filter_out_mask);
+            this->get_filters().get_enabled_mask(
+                filter_in_mask, filter_out_mask, filter_in_and_mask,
+                filter_out_and_mask);
             auto* lfo = (line_filter_observer*) lf->get_logline_observer();
             for (uint32_t lpc = old_size; lpc < lf->size(); lpc++) {
                 if (this->tss_apply_filters
-                    && lfo->excluded(filter_in_mask, filter_out_mask, lpc))
+                    && lfo->excluded(filter_in_mask, filter_out_mask, filter_in_and_mask, filter_out_and_mask, lpc))
                 {
                     continue;
                 }

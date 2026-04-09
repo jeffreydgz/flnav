@@ -237,7 +237,7 @@ backup_user_db(const std::string& filename)
         auto exec_res = stmt.execute();
         if (exec_res.isErr()) {
             auto um
-                = lnav::console::user_message::error("unable to attach lnav_db")
+                = lnav::console::user_message::error("unable to attach flnav_db")
                       .with_reason(sqlite3_errmsg(db.in()));
             bguard.push_msg(um);
             return;

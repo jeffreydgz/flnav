@@ -218,7 +218,7 @@
   Clear the filter expression
 
   **See Also**
-    :ref:`filter_expr`, :ref:`filter_in`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`toggle_filtering`
+    :ref:`filter_expr`, :ref:`filter_in_and`, :ref:`filter_in`, :ref:`filter_out_and`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`toggle_filtering`
 
 ----
 
@@ -454,7 +454,7 @@
       :delete-filter last message repeated
 
   **See Also**
-    :ref:`filter_in`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`toggle_filtering`
+    :ref:`filter_in_and`, :ref:`filter_in`, :ref:`filter_out_and`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`toggle_filtering`
 
 ----
 
@@ -533,7 +533,7 @@
 :disable-filter *pattern*
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-  Disable a filter created with filter-in/filter-out
+  Disable a filter created with filter-in/filter-in-and/filter-out
 
   **Parameters**
     * **pattern\*** --- The regular expression used in the filter command
@@ -546,7 +546,7 @@
       :disable-filter last message repeated
 
   **See Also**
-    :ref:`enable_filter`, :ref:`filter_in`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`toggle_filtering`
+    :ref:`enable_filter`, :ref:`filter_in_and`, :ref:`filter_in`, :ref:`filter_out_and`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`toggle_filtering`
 
 ----
 
@@ -606,7 +606,7 @@
       :enable-filter last message repeated
 
   **See Also**
-    :ref:`filter_in`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`toggle_filtering`
+    :ref:`filter_in_and`, :ref:`filter_in`, :ref:`filter_out_and`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`toggle_filtering`
 
 ----
 
@@ -720,7 +720,7 @@
       :filter-expr :log_body REGEXP 'id\d+' AND :log_body REGEXP 'foo'
 
   **See Also**
-    :ref:`clear_filter_expr`, :ref:`filter_in`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`toggle_filtering`
+    :ref:`clear_filter_expr`, :ref:`filter_in_and`, :ref:`filter_in`, :ref:`filter_out_and`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`toggle_filtering`
 
 ----
 
@@ -743,7 +743,30 @@
       :filter-in dhclient
 
   **See Also**
-    :ref:`delete_filter`, :ref:`disable_filter`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`toggle_filtering`
+    :ref:`delete_filter`, :ref:`disable_filter`, :ref:`filter_in_and`, :ref:`filter_out_and`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`toggle_filtering`
+
+----
+
+
+.. _filter_in_and:
+
+:filter-in-and *pattern*
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+  Only show lines that match all of the given filter-in-and patterns (AND logic). Multiple filter-in-and patterns must all match for a line to be shown
+
+  **Parameters**
+    * **pattern\*** --- The regular expression to match
+
+  **Examples**
+    To only show lines that contain both 'error' and 'connection':
+
+    .. code-block::  lnav
+
+      :filter-in-and error
+
+  **See Also**
+    :ref:`filter_in`, :ref:`filter_out_and`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`toggle_filtering`
 
 ----
 
@@ -766,7 +789,30 @@
       :filter-out last message repeated
 
   **See Also**
-    :ref:`delete_filter`, :ref:`disable_filter`, :ref:`filter_in`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`toggle_filtering`
+    :ref:`delete_filter`, :ref:`disable_filter`, :ref:`filter_in_and`, :ref:`filter_in`, :ref:`filter_out_and`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`toggle_filtering`
+
+----
+
+
+.. _filter_out_and:
+
+:filter-out-and *pattern*
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  Remove lines that match all of the given filter-out-and patterns (AND logic). Multiple filter-out-and patterns must all match for a line to be hidden
+
+  **Parameters**
+    * **pattern\*** --- The regular expression to match
+
+  **Examples**
+    To hide lines that contain both 'debug' and 'verbose':
+
+    .. code-block::  lnav
+
+      :filter-out-and debug
+
+  **See Also**
+    :ref:`filter_in_and`, :ref:`filter_in`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`toggle_filtering`
 
 ----
 
@@ -913,7 +959,7 @@
       :hide-lines-after 6am
 
   **See Also**
-    :ref:`filter_in`, :ref:`filter_out`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`show_lines_before_and_after`, :ref:`toggle_filtering`
+    :ref:`filter_in_and`, :ref:`filter_in`, :ref:`filter_out_and`, :ref:`filter_out`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`show_lines_before_and_after`, :ref:`toggle_filtering`
 
 ----
 
@@ -942,7 +988,7 @@
       :hide-lines-before 6am
 
   **See Also**
-    :ref:`filter_in`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_unmarked_lines`, :ref:`show_lines_before_and_after`, :ref:`toggle_filtering`
+    :ref:`filter_in_and`, :ref:`filter_in`, :ref:`filter_out_and`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_unmarked_lines`, :ref:`show_lines_before_and_after`, :ref:`toggle_filtering`
 
 ----
 
@@ -955,7 +1001,7 @@
   Hide lines that have not been bookmarked
 
   **See Also**
-    :ref:`clear_all_sticky_headers`, :ref:`filter_in`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`mark`, :ref:`next_mark`, :ref:`prev_mark`, :ref:`toggle_filtering`, :ref:`toggle_sticky_header`
+    :ref:`clear_all_sticky_headers`, :ref:`filter_in_and`, :ref:`filter_in`, :ref:`filter_out_and`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`mark`, :ref:`next_mark`, :ref:`prev_mark`, :ref:`toggle_filtering`, :ref:`toggle_sticky_header`
 
 ----
 
@@ -1641,7 +1687,7 @@
   Show lines that were hidden by the 'hide-lines' commands
 
   **See Also**
-    :ref:`filter_in`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`toggle_filtering`
+    :ref:`filter_in_and`, :ref:`filter_in`, :ref:`filter_out_and`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`toggle_filtering`
 
 ----
 
@@ -1665,7 +1711,7 @@
   Show lines that have not been bookmarked
 
   **See Also**
-    :ref:`clear_all_sticky_headers`, :ref:`filter_in`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`hide_unmarked_lines`, :ref:`mark`, :ref:`next_mark`, :ref:`prev_mark`, :ref:`toggle_filtering`, :ref:`toggle_sticky_header`
+    :ref:`clear_all_sticky_headers`, :ref:`filter_in_and`, :ref:`filter_in`, :ref:`filter_out_and`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`, :ref:`hide_unmarked_lines`, :ref:`mark`, :ref:`next_mark`, :ref:`prev_mark`, :ref:`toggle_filtering`, :ref:`toggle_sticky_header`
 
 ----
 
@@ -1788,7 +1834,7 @@
   Toggle the filtering flag for the current view
 
   **See Also**
-    :ref:`filter_in`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`
+    :ref:`filter_in_and`, :ref:`filter_in`, :ref:`filter_out_and`, :ref:`filter_out`, :ref:`hide_lines_after`, :ref:`hide_lines_before`, :ref:`hide_unmarked_lines`
 
 ----
 

@@ -102,7 +102,9 @@ class text_filter {
 public:
     typedef enum {
         INCLUDE,
+        INCLUDE_AND,
         EXCLUDE,
+        EXCLUDE_AND,
     } type_t;
 
     text_filter(type_t type, filter_lang_t lang, std::string id, size_t index)
@@ -184,9 +186,18 @@ public:
 
     std::string to_command() const override
     {
-        return (this->lf_type == text_filter::INCLUDE ? "filter-in "
-                                                      : "filter-out ")
-            + this->lf_id;
+        switch (this->lf_type) {
+            case text_filter::INCLUDE:
+                return "filter-in " + this->lf_id;
+            case text_filter::INCLUDE_AND:
+                return "filter-in-and " + this->lf_id;
+            case text_filter::EXCLUDE:
+                return "filter-out " + this->lf_id;
+            case text_filter::EXCLUDE_AND:
+                return "filter-out-and " + this->lf_id;
+            default:
+                return "filter-out " + this->lf_id;
+        }
     }
 
 protected:
@@ -251,7 +262,10 @@ public:
 
     void get_mask(uint32_t& filter_mask);
 
-    void get_enabled_mask(uint32_t& filter_in_mask, uint32_t& filter_out_mask);
+    void get_enabled_mask(uint32_t& filter_in_mask,
+                          uint32_t& filter_out_mask,
+                          uint32_t& filter_in_and_mask,
+                          uint32_t& filter_out_and_mask);
 
     uint32_t fs_generation{0};
 

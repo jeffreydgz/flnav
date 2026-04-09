@@ -47,7 +47,7 @@ namespace {
 struct all_opids {
     static constexpr const char* NAME = "all_opids";
     static constexpr const char* CREATE_STMT = R"(
-CREATE TABLE lnav_db.all_opids (
+CREATE TABLE flnav_db.all_opids (
     opid TEXT PRIMARY KEY,  -- The operation ID
     earliest DATETIME,      -- The earliest time this ID was seen
     latest DATETIME,        -- The latest time this ID was seen
@@ -233,7 +233,7 @@ CREATE TABLE lnav_db.all_opids (
 struct all_thread_ids {
     static constexpr const char* NAME = "all_thread_ids";
     static constexpr const char* CREATE_STMT = R"(
-CREATE TABLE lnav_db.all_thread_ids (
+CREATE TABLE flnav_db.all_thread_ids (
     thread_id TEXT PRIMARY KEY,  -- The thread ID
     earliest DATETIME,           -- The earliest time this ID was seen
     latest DATETIME,             -- The latest time this ID was seen

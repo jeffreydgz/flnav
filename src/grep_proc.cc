@@ -225,7 +225,7 @@ grep_proc<LineType>::child_loop()
         perror("setvbuf");
     }
     lnav_log_file
-        = make_optional_from_nullable(fopen("/tmp/lnav.grep.err", "a"));
+        = make_optional_from_nullable(fopen("/tmp/flnav.grep.err", "a"));
     line_value.reserve(BUFSIZ * 2);
     while (!this->gp_queue.empty()) {
         LineType start_line = this->gp_queue.front().first;

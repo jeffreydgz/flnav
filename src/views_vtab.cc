@@ -71,11 +71,18 @@ struct from_sqlite<text_filter::type_t> {
         if (strcasecmp(type_name, "in") == 0) {
             return text_filter::INCLUDE;
         }
+        if (strcasecmp(type_name, "in-and") == 0) {
+            return text_filter::INCLUDE_AND;
+        }
         if (strcasecmp(type_name, "out") == 0) {
             return text_filter::EXCLUDE;
         }
+        if (strcasecmp(type_name, "out-and") == 0) {
+            return text_filter::EXCLUDE_AND;
+        }
 
-        throw from_sqlite_conversion_error("value of 'in' or 'out'", argi);
+        throw from_sqlite_conversion_error(
+            "value of 'in', 'in-and', 'out', or 'out-and'", argi);
     }
 };
 
@@ -293,7 +300,7 @@ struct lnav_views : tvt_iterator_cursor<lnav_views> {
     static constexpr const char* NAME = "lnav_views";
     static constexpr const char* CREATE_STMT = R"(
 -- Access lnav's views through this table.
-CREATE TABLE lnav_db.lnav_views (
+CREATE TABLE flnav_db.lnav_views (
     name TEXT PRIMARY KEY,  -- The name of the view.
     top INTEGER,            -- The number of the line at the top of the view, starting from zero.
     left INTEGER,           -- The left position of the viewport.
@@ -784,7 +791,7 @@ struct lnav_view_stack : public tvt_iterator_cursor<lnav_view_stack> {
     static constexpr const char* NAME = "lnav_view_stack";
     static constexpr const char* CREATE_STMT = R"(
 -- Access lnav's view stack through this table.
-CREATE TABLE lnav_db.lnav_view_stack (
+CREATE TABLE flnav_db.lnav_view_stack (
     name TEXT
 );
 )";
@@ -928,7 +935,7 @@ struct lnav_view_filters
     static constexpr const char* NAME = "lnav_view_filters";
     static constexpr const char* CREATE_STMT = R"(
 -- Access lnav's filters through this table.
-CREATE TABLE lnav_db.lnav_view_filters (
+CREATE TABLE flnav_db.lnav_view_filters (
     view_name TEXT,                    -- The name of the view.
     filter_id INTEGER DEFAULT 0,       -- The filter identifier.
     enabled   INTEGER DEFAULT 1,       -- Indicates if the filter is enabled/disabled.
@@ -962,8 +969,16 @@ CREATE TABLE lnav_db.lnav_view_filters (
                     case text_filter::INCLUDE:
                         sqlite3_result_text(ctx, "in", 2, SQLITE_STATIC);
                         break;
+                    case text_filter::INCLUDE_AND:
+                        sqlite3_result_text(
+                            ctx, "in-and", 6, SQLITE_STATIC);
+                        break;
                     case text_filter::EXCLUDE:
                         sqlite3_result_text(ctx, "out", 3, SQLITE_STATIC);
+                        break;
+                    case text_filter::EXCLUDE_AND:
+                        sqlite3_result_text(
+                            ctx, "out-and", 7, SQLITE_STATIC);
                         break;
                     default:
                         ensure(0);
@@ -1250,7 +1265,7 @@ struct lnav_view_filter_stats
     static constexpr const char* NAME = "lnav_view_filter_stats";
     static constexpr const char* CREATE_STMT = R"(
 -- Access statistics for filters through this table.
-CREATE TABLE lnav_db.lnav_view_filter_stats (
+CREATE TABLE flnav_db.lnav_view_filter_stats (
     view_name TEXT,     -- The name of the view.
     filter_id INTEGER,  -- The filter identifier.
     hits      INTEGER   -- The number of lines that matched this filter.
@@ -1286,7 +1301,7 @@ struct lnav_view_files : tvt_iterator_cursor<lnav_view_files> {
     static constexpr const char* NAME = "lnav_view_files";
     static constexpr const char* CREATE_STMT = R"(
 --
-CREATE TABLE lnav_db.lnav_view_files (
+CREATE TABLE flnav_db.lnav_view_files (
     view_name TEXT,     -- The name of the view.
     filepath  TEXT,     -- The path to the file.
     visible   INTEGER   -- Indicates whether or not the file is shown.
@@ -1390,10 +1405,10 @@ int
 register_views_vtab(sqlite3* db)
 {
     static const char* CREATE_FILTER_VIEW = R"(
-CREATE VIEW lnav_db.lnav_view_filters_and_stats AS
+CREATE VIEW flnav_db.lnav_view_filters_and_stats AS
   SELECT *
-    FROM lnav_db.lnav_view_filters
-    LEFT NATURAL JOIN lnav_db.lnav_view_filter_stats
+    FROM flnav_db.lnav_view_filters
+    LEFT NATURAL JOIN flnav_db.lnav_view_filter_stats
 )";
 
     auto_mem<char> errmsg(sqlite3_free);

@@ -144,7 +144,7 @@ log_vtab_impl::get_table_statement()
         std::ostringstream oss;
         size_t max_name_len = 15;
 
-        oss << "CREATE TABLE lnav_db." << this->get_name().to_string()
+        oss << "CREATE TABLE flnav_db." << this->get_name().to_string()
             << LOG_COLUMNS;
         this->get_columns(cols);
         this->vi_column_count = cols.size();
@@ -2758,7 +2758,7 @@ log_vtab_manager::register_vtab(std::shared_ptr<log_vtab_impl> vi)
         vi->get_primary_keys(primary_keys);
 
         sql = sqlite3_mprintf(
-            "CREATE VIRTUAL TABLE lnav_db.%s "
+            "CREATE VIRTUAL TABLE flnav_db.%s "
             "USING %s(%s)",
             vi->get_name().get(),
             primary_keys.empty() ? "log_vtab_impl" : "log_vtab_no_rowid_impl",

@@ -222,7 +222,9 @@ com_filter(exec_context& ec,
             return Err(um);
         }
         if (ec.ec_dry_run) {
-            if (args[0] == "filter-in" && !fs.empty()) {
+            if ((args[0] == "filter-in" || args[0] == "filter-in-and")
+                && !fs.empty())
+            {
                 lnav_data.ld_preview_status_source[0]
                     .get_description()
                     .set_value(
@@ -233,8 +235,10 @@ com_filter(exec_context& ec,
             } else {
                 auto& hm = tc->get_highlights();
                 highlighter hl(compile_res.unwrap().to_shared());
-                auto role = (args[0] == "filter-out") ? role_t::VCR_DIFF_DELETE
-                                                      : role_t::VCR_DIFF_ADD;
+                auto role = (args[0] == "filter-out"
+                             || args[0] == "filter-out-and")
+                    ? role_t::VCR_DIFF_DELETE
+                    : role_t::VCR_DIFF_ADD;
 
                 hl.with_role(role);
                 hl.with_attrs(text_attrs::with_styles(
@@ -253,8 +257,16 @@ com_filter(exec_context& ec,
             }
             lnav_data.ld_status[LNS_PREVIEW0].set_needs_update();
         } else {
-            auto lt = (args[0] == "filter-out") ? text_filter::EXCLUDE
-                                                : text_filter::INCLUDE;
+            text_filter::type_t lt;
+            if (args[0] == "filter-out") {
+                lt = text_filter::EXCLUDE;
+            } else if (args[0] == "filter-out-and") {
+                lt = text_filter::EXCLUDE_AND;
+            } else if (args[0] == "filter-in-and") {
+                lt = text_filter::INCLUDE_AND;
+            } else {
+                lt = text_filter::INCLUDE;
+            }
             auto filter_index = fs.next_index();
             if (!filter_index) {
                 return ec.make_error("too many filters");
@@ -468,6 +480,24 @@ static readline_context::command_t FILTERING_COMMANDS[] = {
         com_filter_prompt,
     },
     {
+        "filter-in-and",
+        com_filter,
+
+        help_text(":filter-in-and")
+            .with_summary("Only show lines that match all of the given "
+                          "filter-in-and patterns (AND logic). "
+                          "Multiple filter-in-and patterns must all match "
+                          "for a line to be shown")
+            .with_parameter(
+                help_text("pattern", "The regular expression to match")
+                    .with_format(help_parameter_format_t::HPF_REGEX))
+            .with_tags({"filtering"})
+            .with_example({"To only show lines that contain both "
+                           "'error' and 'connection'",
+                           "error"}),
+        com_filter_prompt,
+    },
+    {
         "filter-out",
         com_filter,
 
@@ -483,6 +513,24 @@ static readline_context::command_t FILTERING_COMMANDS[] = {
                            "contain the string "
                            "'last message repeated'",
                            "last message repeated"}),
+        com_filter_prompt,
+    },
+    {
+        "filter-out-and",
+        com_filter,
+
+        help_text(":filter-out-and")
+            .with_summary("Remove lines that match all of the given "
+                          "filter-out-and patterns (AND logic). "
+                          "Multiple filter-out-and patterns must all match "
+                          "for a line to be hidden")
+            .with_parameter(
+                help_text("pattern", "The regular expression to match")
+                    .with_format(help_parameter_format_t::HPF_REGEX))
+            .with_tags({"filtering"})
+            .with_example({"To hide lines that contain both "
+                           "'debug' and 'verbose'",
+                           "debug"}),
         com_filter_prompt,
     },
     {
@@ -507,7 +555,7 @@ static readline_context::command_t FILTERING_COMMANDS[] = {
         com_disable_filter,
 
         help_text(":disable-filter")
-            .with_summary("Disable a filter created with filter-in/filter-out")
+            .with_summary("Disable a filter created with filter-in/filter-in-and/filter-out")
             .with_parameter(
                 help_text("pattern",
                           "The regular expression used in the filter command")

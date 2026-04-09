@@ -122,7 +122,7 @@ private:
     {
         char lockname[64];
 
-        snprintf(lockname, sizeof(lockname), "/tmp/lnav.%d.lck", getpid());
+        snprintf(lockname, sizeof(lockname), "/tmp/flnav.%d.lck", getpid());
         this->lh_fd = open(lockname, O_CREAT | O_RDWR, 0600);
         log_perror(fcntl(this->lh_fd, F_SETFD, FD_CLOEXEC));
         unlink(lockname);

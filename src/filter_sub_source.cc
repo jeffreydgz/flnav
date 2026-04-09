@@ -912,14 +912,20 @@ filter_sub_source::text_filter_row::value_for(const render_state& rs,
     al.append(" ");
     switch (this->tfr_filter->get_type()) {
         case text_filter::INCLUDE:
-            al.append(" ").append(lnav::roles::ok("IN")).append(" ");
+            al.append(" ").append(lnav::roles::ok("IN")).append("  ");
+            break;
+        case text_filter::INCLUDE_AND:
+            al.append(lnav::roles::ok("IN+")).append(" ");
             break;
         case text_filter::EXCLUDE:
             if (this->tfr_filter->get_lang() == filter_lang_t::REGEX) {
-                al.append(lnav::roles::error("OUT")).append(" ");
+                al.append(lnav::roles::error("OUT")).append("  ");
             } else {
-                al.append("    ");
+                al.append("     ");
             }
+            break;
+        case text_filter::EXCLUDE_AND:
+            al.append(lnav::roles::error("OUT+")).append(" ");
             break;
         default:
             ensure(0);
@@ -968,10 +974,19 @@ filter_sub_source::text_filter_row::handle_key(textview_curses* top_view,
             return true;
         }
         case 't': {
-            if (this->tfr_filter->get_type() == text_filter::INCLUDE) {
-                this->tfr_filter->set_type(text_filter::EXCLUDE);
-            } else {
-                this->tfr_filter->set_type(text_filter::INCLUDE);
+            switch (this->tfr_filter->get_type()) {
+                case text_filter::INCLUDE:
+                    this->tfr_filter->set_type(text_filter::INCLUDE_AND);
+                    break;
+                case text_filter::INCLUDE_AND:
+                    this->tfr_filter->set_type(text_filter::EXCLUDE);
+                    break;
+                case text_filter::EXCLUDE:
+                    this->tfr_filter->set_type(text_filter::EXCLUDE_AND);
+                    break;
+                case text_filter::EXCLUDE_AND:
+                    this->tfr_filter->set_type(text_filter::INCLUDE);
+                    break;
             }
             return true;
         }

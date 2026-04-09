@@ -1606,8 +1606,11 @@ logfile_sub_source::rebuild_index(std::optional<ui_clock::time_point> deadline)
 
         this->lss_filtered_index.reserve(this->lss_index.size());
 
-        uint32_t filter_in_mask, filter_out_mask;
-        this->get_filters().get_enabled_mask(filter_in_mask, filter_out_mask);
+        uint32_t filter_in_mask, filter_out_mask, filter_in_and_mask,
+            filter_out_and_mask;
+        this->get_filters().get_enabled_mask(
+            filter_in_mask, filter_out_mask, filter_in_and_mask,
+            filter_out_and_mask);
 
         if (start_size == 0 && this->lss_index_delegate != nullptr) {
             this->lss_index_delegate->index_start(*this);
@@ -1635,7 +1638,7 @@ logfile_sub_source::rebuild_index(std::optional<ui_clock::time_point> deadline)
 
             if (!this->tss_apply_filters
                 || (!(*ld)->ld_filter_state.excluded(
-                        filter_in_mask, filter_out_mask, line_number)
+                        filter_in_mask, filter_out_mask, filter_in_and_mask, filter_out_and_mask, line_number)
                     && this->check_extra_filters(ld, line_iter)))
             {
                 auto eval_res = this->eval_sql_filter(
@@ -1780,9 +1783,12 @@ logfile_sub_source::text_filters_changed()
     }
 
     auto& vis_bm = this->tss_view->get_bookmarks();
-    uint32_t filtered_in_mask, filtered_out_mask;
+    uint32_t filtered_in_mask, filtered_out_mask, filtered_in_and_mask,
+        filtered_out_and_mask;
 
-    this->get_filters().get_enabled_mask(filtered_in_mask, filtered_out_mask);
+    this->get_filters().get_enabled_mask(
+        filtered_in_mask, filtered_out_mask, filtered_in_and_mask,
+        filtered_out_and_mask);
 
     if (this->lss_index_delegate != nullptr) {
         this->lss_index_delegate->index_start(*this);
@@ -1806,7 +1812,7 @@ logfile_sub_source::text_filters_changed()
 
         if (!this->tss_apply_filters
             || (!(*ld)->ld_filter_state.excluded(
-                    filtered_in_mask, filtered_out_mask, line_number)
+                    filtered_in_mask, filtered_out_mask, filtered_in_and_mask, filtered_out_and_mask, line_number)
                 && this->check_extra_filters(ld, line_iter)))
         {
             auto eval_res = this->eval_sql_filter(

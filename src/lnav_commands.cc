@@ -3159,7 +3159,9 @@ com_ssh_stats(exec_context& ec,
             if (tok_res->tr_token == DT_IPV4_ADDRESS
                 || tok_res->tr_token == DT_IPV6_ADDRESS)
             {
-                ip_counts[tok_res->to_string()]++;
+                auto ip_str = tok_res->to_string();
+                ip_counts[ip_str]++;
+                unique_sources.insert(ip_str);
             } else if (tok_res->tr_token == DT_QUOTED_STRING) {
                 auto inner_sf = tok_res->inner_string_fragment();
                 data_scanner inner_ds(inner_sf, false);
@@ -3169,7 +3171,9 @@ com_ssh_stats(exec_context& ec,
                         || inner_tok->tr_token == DT_IPV6_ADDRESS)
                     && inner_tok->tr_capture.length() == inner_sf.length())
                 {
-                    ip_counts[inner_tok->to_string()]++;
+                    auto ip_str = inner_tok->to_string();
+                    ip_counts[ip_str]++;
+                    unique_sources.insert(ip_str);
                 }
             }
         }

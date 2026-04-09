@@ -857,7 +857,7 @@ const std::unordered_map<unsigned char, const char*> sql_constraint_names = {
 std::multimap<std::string, const help_text*> sqlite_function_help;
 
 const char* const LNAV_ATTACH_DB
-    = "ATTACH DATABASE 'file:lnav_db?mode=memory&cache=shared' AS lnav_db";
+    = "ATTACH DATABASE 'file:flnav_db?mode=memory&cache=shared' AS flnav_db";
 
 static int
 handle_db_list(void* ptr, int ncols, char** colvalues, char** colnames)
@@ -1406,9 +1406,9 @@ sql_compile_script(sqlite3* db,
             if (errmsg.startswith("no such table: main.lnav")) {
                 um.with_help(
                     attr_line_t("The lnav tables have been moved to the ")
-                        .append_quoted("lnav_db"_symbol)
+                        .append_quoted("flnav_db"_symbol)
                         .append(" database.  Try prefixing the name with ")
-                        .append("lnav_db."_quoted_code));
+                        .append("flnav_db."_quoted_code));
             }
             errors.emplace_back(um);
             break;

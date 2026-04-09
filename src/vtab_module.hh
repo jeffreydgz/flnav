@@ -831,7 +831,7 @@ struct vtab_module : vtab_module_base {
             db, impl_name.c_str(), &this->vm_module, this);
         ensure(rc == SQLITE_OK);
         auto create_stmt = fmt::format(
-            FMT_STRING("CREATE VIRTUAL TABLE lnav_db.{} USING {}()"),
+            FMT_STRING("CREATE VIRTUAL TABLE flnav_db.{} USING {}()"),
             name,
             impl_name);
         return sqlite3_exec(db, create_stmt.c_str(), nullptr, nullptr, nullptr);
