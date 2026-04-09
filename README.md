@@ -135,19 +135,6 @@ Click+drag to select text in any view. Double-click selects a word. An actions p
 
 ---
 
-### Performance & Bug Fixes
-
-- Replaced `find()+emplace()` with `try_emplace()` for map merging
-- Cached `get_time()` calls outside hot loops
-- Added `std::is_sorted()` guard before `std::stable_sort()` in the render path
-- Fixed unchecked `.back()` calls on potentially empty containers
-- Fixed pointer arithmetic bug in file identity checks
-- Fixed right-arrow scroll becoming stuck after scrolling back from maximum position
-- Fixed multi-zip crash: serialized `archive_manager::extract()` with mutex (libarchive not thread-safe)
-- Cumulative load progress: bottom bar no longer resets 0-100% per file during multi-file loads
-
----
-
 ## Quick Reference
 
 | Key / Command | Action |
