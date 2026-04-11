@@ -1,4 +1,4 @@
-AC_INIT([flnav],[0.14.0],[lnav@googlegroups.com],[flnav],[http://lnav.org])
+AC_INIT([flnav],[1.0.1],[lnav@googlegroups.com],[flnav],[http://lnav.org])
 AC_CONFIG_SRCDIR([src/lnav.cc])
 AC_CONFIG_MACRO_DIR([m4])
 AM_INIT_AUTOMAKE([foreign subdir-objects])

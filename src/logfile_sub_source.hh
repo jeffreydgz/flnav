@@ -182,7 +182,6 @@ public:
     void set_normalize_timestamps(bool val)
     {
         this->lss_normalize_timestamps = val;
-        this->lss_longest_line = 0;
         this->clear_line_size_cache();
     }
 
