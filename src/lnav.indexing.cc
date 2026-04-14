@@ -96,7 +96,11 @@ public:
         {
             if (all_done) {
                 lnav_data.ld_bottom_source.update_loading(0, 0);
-                this->lo_progress.clear();
+                // Do NOT clear lo_progress here: when reobserving multiple
+                // files sequentially (e.g. text_filters_changed), clearing
+                // the map as soon as one file finishes causes the next
+                // file's progress to start fresh at 0%, resetting the bar.
+                // begin_batch() clears the map before each batch instead.
             } else {
                 lnav_data.ld_bottom_source.update_loading(cum_off, cum_total);
             }
@@ -111,6 +115,24 @@ public:
             retval = lnav::progress_result_t::interrupt;
         }
         return retval;
+    }
+
+    /**
+     * Called before a batch of sequential reobservation (e.g. from
+     * text_filters_changed).  Resets the per-file progress map and
+     * pre-seeds every file's total so that the cumulative denominator is
+     * known from the very first callback, giving a smooth 0–100% bar
+     * across all files rather than a per-file 0–100% reset.
+     */
+    void begin_batch(
+        const std::vector<std::pair<const logfile*, file_ssize_t>>& batch)
+        override
+    {
+        this->lo_progress.clear();
+        this->lo_last_offset = 0;
+        for (const auto& [lf, total] : batch) {
+            this->lo_progress[lf] = {0, total};
+        }
     }
 
     off_t lo_last_offset{0};

@@ -1768,6 +1768,31 @@ logfile_sub_source::text_filters_changed()
         this->lss_line_meta_changed = false;
     }
 
+    // Before reobserving, prime the loading_observer with the full set of
+    // files and their sizes so it can show a single 0–100% progress bar
+    // across all files instead of resetting to 0% for each individual file.
+    {
+        std::vector<std::pair<const logfile*, file_ssize_t>> batch;
+        logfile_observer* batch_obs = nullptr;
+        for (auto& ld : *this) {
+            auto* lf = ld->get_file_ptr();
+            if (lf == nullptr) {
+                continue;
+            }
+            auto* obs = lf->get_logfile_observer();
+            if (obs == nullptr) {
+                continue;
+            }
+            batch.emplace_back(lf, static_cast<file_ssize_t>(lf->size()));
+            if (batch_obs == nullptr) {
+                batch_obs = obs;
+            }
+        }
+        if (batch_obs != nullptr && !batch.empty()) {
+            batch_obs->begin_batch(batch);
+        }
+    }
+
     for (auto& ld : *this) {
         auto* lf = ld->get_file_ptr();
 

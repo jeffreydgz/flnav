@@ -79,6 +79,20 @@ public:
     virtual lnav::progress_result_t logfile_indexing(const logfile* lf,
                                                      file_off_t off,
                                                      file_ssize_t total) = 0;
+
+    /**
+     * Called before a batch of reobservation so the observer can reset its
+     * state and pre-seed progress totals for all files in the batch.  This
+     * allows the loading bar to show 0–100% across the *entire* batch rather
+     * than resetting for each individual file.
+     *
+     * @param batch  Pairs of (file pointer, total line count) for every file
+     *               that will be reobserved in this batch.
+     */
+    virtual void begin_batch(
+        const std::vector<std::pair<const logfile*, file_ssize_t>>& batch)
+    {
+    }
 };
 
 struct logfile_activity {
