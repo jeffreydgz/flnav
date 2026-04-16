@@ -55,6 +55,15 @@ top_status_source::top_status_source(auto_sqlite3& db,
     this->tss_fields[TSF_EXT_ACCESS].set_width(0);
     this->tss_fields[TSF_EXT_ACCESS].right_justify(true);
     this->tss_fields[TSF_TIME].set_width(28);
+    this->tss_fields[TSF_LEFT_PAD].set_share(1);
+    this->tss_fields[TSF_LEFT_PAD].set_spacer(true);
+    {
+        static constexpr auto VERSION_STR = " flnav v" PACKAGE_VERSION " ";
+        static constexpr int VERSION_WIDTH
+            = sizeof(" flnav v" PACKAGE_VERSION " ") - 1;
+        this->tss_fields[TSF_VERSION].set_width(VERSION_WIDTH);
+        this->tss_fields[TSF_VERSION].set_value(VERSION_STR);
+    }
     this->tss_fields[TSF_USER_MSG].set_share(1);
     this->tss_fields[TSF_USER_MSG].right_justify(true);
 

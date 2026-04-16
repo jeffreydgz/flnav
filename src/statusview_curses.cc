@@ -282,8 +282,9 @@ statusview_curses::window_change()
         int available = remaining / divisor;
         int actual_width;
 
-        if ((sf->get_left_pad() + sf->get_value().length())
-            < (sf->get_min_width() + available))
+        if (!sf->is_spacer()
+            && (sf->get_left_pad() + sf->get_value().length())
+                < (sf->get_min_width() + available))
         {
             actual_width = std::max(
                 (int) sf->get_min_width(),

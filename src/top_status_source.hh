@@ -40,6 +40,8 @@ public:
     enum field_t {
         TSF_TIME,
         TSF_EXT_ACCESS,
+        TSF_LEFT_PAD,
+        TSF_VERSION,
         TSF_USER_MSG,
 
         TSF__MAX

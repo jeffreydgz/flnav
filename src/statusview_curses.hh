@@ -123,6 +123,9 @@ public:
 
     int get_share() const { return this->sf_share; }
 
+    void set_spacer(bool yes) { this->sf_spacer = yes; }
+    bool is_spacer() const { return this->sf_spacer; }
+
     static void no_op_action(status_field&);
 
     action on_click{no_op_action};
@@ -137,6 +140,7 @@ protected:
     role_t sf_role; /*< The color role for this field. */
     int sf_share{0};
     size_t sf_left_pad{0};
+    bool sf_spacer{false};
 };
 
 /**
