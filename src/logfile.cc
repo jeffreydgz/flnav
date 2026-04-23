@@ -857,7 +857,7 @@ logfile::process_prefix(shared_buffer_ref& sbr,
             best_match;
         size_t scan_count = 0;
 
-        if (!this->lf_index.empty()) {
+        if (prescan_size > 0) {
             prescan_time = this->lf_index[prescan_size - 1]
                                .get_time<std::chrono::microseconds>();
         }
@@ -1204,7 +1204,7 @@ logfile::process_prefix(shared_buffer_ref& sbr,
             found = best_match->second;
         }
     } else if (this->lf_format.get() != nullptr) {
-        if (!this->lf_index.empty()) {
+        if (prescan_size > 0) {
             prescan_time = this->lf_index[prescan_size - 1]
                                .get_time<std::chrono::microseconds>();
         }
