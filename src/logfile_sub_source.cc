@@ -1332,6 +1332,19 @@ logfile_sub_source::rebuild_index(std::optional<ui_clock::time_point> deadline)
         retval = rebuild_result::rr_full_rebuild;
     }
 
+    // Recompute after Phase 2 scanning — gz/bz2 decompression and initial
+    // format detection can add far more lines than Phase 1 estimated.
+    total_lines = 0;
+    est_remaining_lines = 0;
+    for (const auto& ld_ptr : this->lss_files) {
+        auto* lf = ld_ptr->get_file_ptr();
+        if (lf == nullptr) {
+            continue;
+        }
+        total_lines += lf->size();
+        est_remaining_lines += lf->estimated_remaining_lines();
+    }
+
     if (this->lss_index.reserve(total_lines + est_remaining_lines)) {
         // The index array was reallocated, just do a full sort/rebuild since
         // it's been cleared out.
