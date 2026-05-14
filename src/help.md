@@ -1,5 +1,5 @@
 
-# flnav 1.0.6
+# flnav 1.0.7
 
 A fancy log file viewer for the terminal.
 
