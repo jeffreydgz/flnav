@@ -117,6 +117,12 @@ vcpkg_installed/
 # Local planning notes
 IMPROVEMENT_PLAN.md
 RELEASE_CHECKLIST.md
+# Local agent memory
+AGENTS.md
+docs/ARCHITECTURE.md
+docs/DECISIONS.md
+docs/SESSION_LOG.md
+docs/TASTE.md
 # Test temporaries
 test_sql_normalize_ts.sh_*
 # Removed from fork
