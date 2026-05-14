@@ -1,0 +1,10 @@
+# Valid and invalid IOC CIDR entries for forensic regression fixtures.
+198.51.100.0/24
+2001:db8::/64
+203.0.113.0/30
+
+# Invalid CIDRs should be ignored.
+198.51.100.0/33
+2001:db8::/129
+999.999.999.999/24
+203.0.113.0/nope

@@ -33,7 +33,6 @@
  */
 
 #include <locale.h>
-#include <arpa/inet.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -128,6 +127,7 @@
 #include "scn/scan.h"
 #include "service_tags.hh"
 #include "session_data.hh"
+#include "ssh_stats_vtab.hh"
 #include "spectro_source.hh"
 #include "sql_help.hh"
 #include "sql_util.hh"
@@ -2740,72 +2740,6 @@ print_user_msgs(std::vector<lnav::console::user_message> error_list,
 verbosity_t verbosity = verbosity_t::standard;
 
 static std::string
-strip_ioc_token(std::string candidate)
-{
-    auto is_space = [](unsigned char ch) { return std::isspace(ch) != 0; };
-
-    while (!candidate.empty()
-           && is_space(static_cast<unsigned char>(candidate.front())))
-    {
-        candidate.erase(candidate.begin());
-    }
-    while (!candidate.empty()
-           && is_space(static_cast<unsigned char>(candidate.back())))
-    {
-        candidate.pop_back();
-    }
-
-    bool changed;
-    do {
-        changed = false;
-        if (candidate.size() >= 2
-            && ((candidate.front() == '\'' && candidate.back() == '\'')
-                || (candidate.front() == '"' && candidate.back() == '"')
-                || (candidate.front() == '[' && candidate.back() == ']')
-                || (candidate.front() == '(' && candidate.back() == ')')))
-        {
-            candidate = candidate.substr(1, candidate.size() - 2);
-            changed = true;
-        }
-    } while (changed);
-
-    while (!candidate.empty()
-           && (candidate.back() == ',' || candidate.back() == ';'))
-    {
-        candidate.pop_back();
-    }
-
-    return candidate;
-}
-
-static std::optional<std::string>
-normalize_ioc_ip(std::string candidate)
-{
-    candidate = strip_ioc_token(std::move(candidate));
-    if (candidate.empty()) {
-        return std::nullopt;
-    }
-
-    in_addr addr4;
-    if (inet_pton(AF_INET, candidate.c_str(), &addr4) == 1) {
-        char buf[INET_ADDRSTRLEN];
-        if (inet_ntop(AF_INET, &addr4, buf, sizeof(buf)) != nullptr) {
-            return std::string(buf);
-        }
-    }
-
-    in6_addr addr6;
-    if (inet_pton(AF_INET6, candidate.c_str(), &addr6) == 1) {
-        char buf[INET6_ADDRSTRLEN];
-        if (inet_ntop(AF_INET6, &addr6, buf, sizeof(buf)) != nullptr) {
-            return std::string(buf);
-        }
-    }
-
-    return std::nullopt;
-}
-
-static std::string
 escape_ioc_regex(const std::string& value)
 {
     static const std::string meta = R"(\.^$|()[]{}*+?)";
@@ -2830,6 +2764,8 @@ load_ioc_highlights(const std::string& path)
         return false;
     }
 
+    lnav_data.ld_ioc_matcher.clear();
+
     std::string line;
     while (std::getline(in, line)) {
         auto comment = line.find('#');
@@ -2842,10 +2778,7 @@ load_ioc_highlights(const std::string& path)
             if (token.empty()) {
                 return;
             }
-            auto ip = normalize_ioc_ip(token);
-            if (ip) {
-                lnav_data.ld_ioc_ips.insert(ip.value());
-            }
+            lnav_data.ld_ioc_matcher.add_token(token);
             token.clear();
         };
 
@@ -2861,16 +2794,19 @@ load_ioc_highlights(const std::string& path)
         flush_token();
     }
 
-    if (lnav_data.ld_ioc_ips.empty()) {
+    if (lnav_data.ld_ioc_matcher.empty()) {
         return true;
     }
 
     std::string alt;
-    for (const auto& ip : lnav_data.ld_ioc_ips) {
+    for (const auto& ip : lnav_data.ld_ioc_matcher.exact_ips()) {
         if (!alt.empty()) {
             alt += '|';
         }
         alt += escape_ioc_regex(ip);
+    }
+    if (alt.empty()) {
+        return true;
     }
     std::string pat = "(?<![[:alnum:]_.:])(" + alt + ")(?![[:alnum:]_.:])";
 
@@ -3066,6 +3002,7 @@ main(int argc, char* argv[])
     lnav::events::register_events_tab(lnav_data.ld_db.in());
     register_log_stmt_vtab(lnav_data.ld_db.in());
     register_log_gaps_vtab(lnav_data.ld_db.in());
+    register_ssh_stats_vtabs(lnav_data.ld_db.in());
 
 #ifdef HAVE_RUST_DEPS
     {
@@ -3272,8 +3209,8 @@ SELECT tbl_name FROM sqlite_master WHERE sql LIKE 'CREATE VIRTUAL TABLE%'
         app.add_option("-U,--until", until_time, "until");
         app.add_option("--ioc",
                        ioc_file_path,
-                       "Highlight IOC IP addresses from the given file in the "
-                       "log view")
+                       "Load IOC IP addresses or CIDR ranges from the given "
+                       "file")
             ->type_name("FILE")
             ->check(CLI::ExistingFile);
 

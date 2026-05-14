@@ -13,10 +13,9 @@ project evolves.
 
 ## Current Priority
 
-Phases 1 through 7 are complete. Phase 8 release automation is implemented
-locally, with the remaining gate that the new CI workflow must pass on GitHub
-before publishing a real release. New forensic feature decisions are queued as
-Phases 9 through 11. Configurable session timeouts were handled in Phase 12.
+Phases 1 through 12 are complete. The only open planning question is whether
+the project should keep CMake as a supported build path or officially recommend
+autotools only.
 
 ## Phase 1: Stabilize Fork Identity
 
@@ -161,28 +160,50 @@ Notes:
 
 ## Phase 9: Forensic Defaults
 
-- [ ] Keep forensic features enabled by default.
-- [ ] Add a small smoke test proving forensic commands are available without a
+- [x] Keep forensic features enabled by default.
+- [x] Add a small smoke test proving forensic commands are available without a
       special config or profile.
-- [ ] Document that forensic triage commands are built-in defaults.
+- [x] Document that forensic triage commands are built-in defaults.
+
+Notes:
+
+- 2026-05-14: Forensic triage commands remain built in and available by
+  default. Added a `:ssh-stats` smoke test without `--ioc` or a special profile,
+  and documented the default behavior in `README.md`.
 
 ## Phase 10: IOC CIDR Matching
 
-- [ ] Extend `--ioc` parsing to accept CIDR ranges.
-- [ ] Support IPv4 CIDR ranges first.
-- [ ] Support IPv6 CIDR ranges if the parser design can cover it cleanly.
-- [ ] Preserve exact IP matching for plain IP entries.
-- [ ] Add regression coverage for valid CIDR matches, non-matches, and invalid
+- [x] Extend `--ioc` parsing to accept CIDR ranges.
+- [x] Support IPv4 CIDR ranges first.
+- [x] Support IPv6 CIDR ranges if the parser design can cover it cleanly.
+- [x] Preserve exact IP matching for plain IP entries.
+- [x] Add regression coverage for valid CIDR matches, non-matches, and invalid
       CIDR entries.
-- [ ] Document IOC file syntax with exact IP and CIDR examples.
+- [x] Document IOC file syntax with exact IP and CIDR examples.
+
+Notes:
+
+- 2026-05-14: Added a shared IOC matcher that accepts exact IPv4/IPv6 entries
+  and IPv4/IPv6 CIDR ranges. Exact IP entries still power log-view highlights,
+  while both exact and CIDR entries are used by SSH stats and structured
+  exports. Added CIDR fixtures covering valid matches, non-matches, and invalid
+  ranges.
 
 ## Phase 11: Structured SSH Stats Export
 
-- [ ] Add SQL access to SSH stats data.
-- [ ] Add JSON export for SSH stats data.
-- [ ] Keep the current TUI `:ssh-stats` report working.
-- [ ] Add tests proving SQL, JSON, and TUI outputs stay aligned.
-- [ ] Document the SQL and JSON export workflows.
+- [x] Add SQL access to SSH stats data.
+- [x] Add JSON export for SSH stats data.
+- [x] Keep the current TUI `:ssh-stats` report working.
+- [x] Add tests proving SQL, JSON, and TUI outputs stay aligned.
+- [x] Document the SQL and JSON export workflows.
+
+Notes:
+
+- 2026-05-14: Added `ssh_stats`, `ssh_stats_ip_counts`, and
+  `ssh_stats_summary` SQL table-valued functions plus the `ssh_stats_json()`
+  scalar JSON export. The TUI command, SQL rows, and JSON export now share the
+  same SSH stats scanner, and regression tests compare the structured outputs
+  against the command behavior.
 
 ## Phase 12: Configurable Session Trace Timeout
 

@@ -396,12 +396,20 @@ dist_noinst_DATA = \
     test_events.sh_ed8dc44add223341c03ccb7b3e18371bdb42b710.out \
     test_forensics.sh_18c02a58c4056b5234b4a7b2bcb3a458c896264a.err \
     test_forensics.sh_18c02a58c4056b5234b4a7b2bcb3a458c896264a.out \
+    test_forensics.sh_1d5ef54ce5bd0fa952b90d330eadf9faed5c04ed.err \
+    test_forensics.sh_1d5ef54ce5bd0fa952b90d330eadf9faed5c04ed.out \
+    test_forensics.sh_1ef4970daae7054c80e985d29ba30604e30148a7.err \
+    test_forensics.sh_1ef4970daae7054c80e985d29ba30604e30148a7.out \
     test_forensics.sh_1fc1de4efc8e92e1751133647ace58311c733269.err \
     test_forensics.sh_1fc1de4efc8e92e1751133647ace58311c733269.out \
+    test_forensics.sh_2ad830b9e96bcf7039d59d40f89a67ca56be72a0.err \
+    test_forensics.sh_2ad830b9e96bcf7039d59d40f89a67ca56be72a0.out \
     test_forensics.sh_307d200525c780b197651e1db623fe1858f0499c.err \
     test_forensics.sh_307d200525c780b197651e1db623fe1858f0499c.out \
     test_forensics.sh_520a046143f7db4e67f34dbfdf1aa1e3eff6f783.err \
     test_forensics.sh_520a046143f7db4e67f34dbfdf1aa1e3eff6f783.out \
+    test_forensics.sh_6bcded4b635aa7f954a32ea68112aabcb91e6b22.err \
+    test_forensics.sh_6bcded4b635aa7f954a32ea68112aabcb91e6b22.out \
     test_forensics.sh_812edca8cc96452544b4ad9b3b4cd32c8de84f96.err \
     test_forensics.sh_812edca8cc96452544b4ad9b3b4cd32c8de84f96.out \
     test_forensics.sh_81eaabfae85a478873b92a29e37a5bac6965e2be.err \
@@ -416,6 +424,8 @@ dist_noinst_DATA = \
     test_forensics.sh_a82eb2b64492e9e2fd473c1b1c717dd211a310a5.out \
     test_forensics.sh_ecd4ce4e88c5fce965c9a019ef2efde85a9b78a7.err \
     test_forensics.sh_ecd4ce4e88c5fce965c9a019ef2efde85a9b78a7.out \
+    test_forensics.sh_f2a5b62367953547a7e7a312de9e123ac34f3342.err \
+    test_forensics.sh_f2a5b62367953547a7e7a312de9e123ac34f3342.out \
     test_format_installer.sh_1e08efc3b8c7b67d944a1f8c475cd31d98d5b4f6.err \
     test_format_installer.sh_1e08efc3b8c7b67d944a1f8c475cd31d98d5b4f6.out \
     test_format_installer.sh_6cd73153a8990b8ddb8ce489e90ec667a442f7f9.err \

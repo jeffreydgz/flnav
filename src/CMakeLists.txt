@@ -558,6 +558,7 @@ add_library(
         hist_source.cc
         hotkeys.cc
         input_dispatcher.cc
+        ioc_matcher.cc
         json-extension-functions.cc
         listview_curses.cc
         lnav.events.cc
@@ -623,6 +624,8 @@ add_library(
         sql_util.cc
         sqlitepp.cc
         ssh_flow.cc
+        ssh_stats.cc
+        ssh_stats_vtab.cc
         state-extension-functions.cc
         styling.cc
         term_extra.cc
@@ -702,6 +705,7 @@ add_library(
         highlighter.hh
         hotkeys.hh
         input_dispatcher.hh
+        ioc_matcher.hh
         itertools.similar.hh
         k_merge_tree.h
         lnav.events.hh
@@ -772,6 +776,8 @@ add_library(
         sql_util.hh
         src_ref.hh
         ssh_flow.hh
+        ssh_stats.hh
+        ssh_stats_vtab.hh
         static_file_vtab.hh
         strong_int.hh
         sysclip.hh

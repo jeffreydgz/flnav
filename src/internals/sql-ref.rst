@@ -2919,7 +2919,7 @@ log_gaps(*\[threshold_seconds\]*)
       log_file gap_start gap_end gap_dur⋯seconds other_f⋯_active severity 
 
   **See Also**
-    :ref:`log_gaps`, :ref:`session_trace`
+    :ref:`log_gaps`, :ref:`session_trace`, :ref:`ssh_stats_ip_counts`, :ref:`ssh_stats_json`, :ref:`ssh_stats_summary`, :ref:`ssh_stats`
 
 ----
 
@@ -4256,6 +4256,104 @@ square(*num*)
 
   **See Also**
     :ref:`abs`, :ref:`acos`, :ref:`acosh`, :ref:`asin`, :ref:`asinh`, :ref:`atan2`, :ref:`atan`, :ref:`atanh`, :ref:`atn2`, :ref:`avg`, :ref:`ceil`, :ref:`degrees`, :ref:`exp`, :ref:`floor`, :ref:`log10`, :ref:`log`, :ref:`max`, :ref:`min`, :ref:`pi`, :ref:`power`, :ref:`radians`, :ref:`round`, :ref:`sign`, :ref:`sum`, :ref:`total`
+
+----
+
+
+.. _ssh_stats:
+
+ssh_stats()
+^^^^^^^^^^^
+
+  A table-valued function that exposes SSH flow rows from the current log view.
+
+  **Examples**
+    To list SSH flow rows:
+
+    .. code-block::  custsqlite
+
+      ;SELECT source_ip, destination, outcome, event_count FROM ssh_stats
+      source_ip destination outcome event_count 
+
+  **See Also**
+    :ref:`log_gaps`, :ref:`log_gaps`, :ref:`session_trace`, :ref:`ssh_stats_ip_counts`, :ref:`ssh_stats_json`, :ref:`ssh_stats_summary`
+
+----
+
+
+.. _ssh_stats_ip_counts:
+
+ssh_stats_ip_counts()
+^^^^^^^^^^^^^^^^^^^^^
+
+  A table-valued function that exposes IP frequency rows from the current SSH stats.
+
+  **Examples**
+    To list IOC-matched source addresses:
+
+    .. code-block::  custsqlite
+
+      ;SELECT * FROM ssh_stats_ip_counts WHERE ioc_match = 1
+      address scope event_count ioc_match 
+
+  **See Also**
+    :ref:`log_gaps`, :ref:`log_gaps`, :ref:`session_trace`, :ref:`ssh_stats_json`, :ref:`ssh_stats_summary`, :ref:`ssh_stats`
+
+----
+
+
+.. _ssh_stats_json:
+
+ssh_stats_json()
+^^^^^^^^^^^^^^^^
+
+  Return the current SSH stats as a structured JSON document.
+
+  **Examples**
+    To export the current SSH stats as JSON:
+
+    .. code-block::  custsqlite
+
+      ;SELECT ssh_stats_json()
+      {"summary":{"total_ssh_events":0,"unique_sources":0,"counters":{"accepted":0,"failed_password":0,"failed_publickey":0,"failed_keyboard_interactive":0,"failed_pam":0,"invalid_user":0,"too_many_auth_failures":0,"disconnected":0,"closed_preauth":0,"client_disconnect":0,"closed":0,"new_connection":0}},"ioc":{"entries_loaded":0,"exact_ips":[],"cidrs":[]},"flows":[],"ip_counts":[]}
+
+  **See Also**
+    :ref:`log_gaps`, :ref:`log_gaps`, :ref:`session_trace`, :ref:`ssh_stats_ip_counts`, :ref:`ssh_stats_summary`, :ref:`ssh_stats`
+
+----
+
+
+.. _ssh_stats_summary:
+
+ssh_stats_summary()
+^^^^^^^^^^^^^^^^^^^
+
+  A table-valued function that exposes SSH event counters from the current log view.
+
+  **Examples**
+    To list SSH event counters:
+
+    .. code-block::  custsqlite
+
+      ;SELECT * FROM ssh_stats_summary
+          metric        value    
+      total_s⋯_events          0 
+      unique_sources           0 
+      accepted                 0 
+      failed_password          0 
+      failed_⋯blickey          0 
+      failed_⋯ractive          0 
+      failed_pam               0 
+      invalid_user             0 
+      too_man⋯ailures          0 
+      disconnected             0 
+      closed_preauth           0 
+      client_⋯connect          0 
+      closed                   0 
+      new_connection           0 
+
+  **See Also**
+    :ref:`log_gaps`, :ref:`log_gaps`, :ref:`session_trace`, :ref:`ssh_stats_ip_counts`, :ref:`ssh_stats_json`, :ref:`ssh_stats`
 
 ----
 

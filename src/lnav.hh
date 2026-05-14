@@ -59,6 +59,7 @@
 #include "filter_status_source.hh"
 #include "hist_source.hh"
 #include "input_dispatcher.hh"
+#include "ioc_matcher.hh"
 #include "log_vtab_impl.hh"
 #include "logfile_sub_source.hh"
 #include "plain_text_source.hh"
@@ -195,7 +196,7 @@ struct lnav_data_t {
     plain_text_source ld_ssh_stats_source;
     plain_text_source ld_session_trace_source;
     plain_text_source ld_log_gaps_source;
-    std::unordered_set<std::string> ld_ioc_ips;  // IP addresses loaded from --ioc file
+    lnav::forensics::ioc_matcher ld_ioc_matcher;
 
     textfile_sub_source ld_text_source;
 

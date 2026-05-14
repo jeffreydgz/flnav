@@ -1081,7 +1081,7 @@
     * **threshold** --- Gap threshold with optional suffix s/m/h (default 5m)
 
   **See Also**
-    :ref:`log_gaps`, :ref:`session_trace`
+    :ref:`log_gaps`, :ref:`session_trace`, :ref:`ssh_stats_ip_counts`, :ref:`ssh_stats_json`, :ref:`ssh_stats_summary`, :ref:`ssh_stats`
 
 ----
 
@@ -1551,7 +1551,7 @@
       :session-trace --timeout 10m admin
 
   **See Also**
-    :ref:`log_gaps`, :ref:`log_gaps`
+    :ref:`log_gaps`, :ref:`log_gaps`, :ref:`ssh_stats_ip_counts`, :ref:`ssh_stats_json`, :ref:`ssh_stats_summary`, :ref:`ssh_stats`
 
 ----
 

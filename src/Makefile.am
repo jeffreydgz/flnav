@@ -310,6 +310,7 @@ noinst_HEADERS = \
 	hotkeys.hh \
 	init.sql \
 	input_dispatcher.hh \
+	ioc_matcher.hh \
 	itertools.similar.hh \
 	k_merge_tree.h \
 	line_buffer.hh \
@@ -397,6 +398,8 @@ noinst_HEADERS = \
 	sqlite-extension-func.hh \
 	src_ref.hh \
 	ssh_flow.hh \
+	ssh_stats.hh \
+	ssh_stats_vtab.hh \
 	static_file_vtab.hh \
 	styling.hh \
 	statusview_curses.hh \
@@ -535,6 +538,7 @@ libdiag_a_SOURCES = \
 	hist_source.cc \
 	hotkeys.cc \
 	input_dispatcher.cc \
+	ioc_matcher.cc \
 	json-extension-functions.cc \
 	line_buffer.cc \
 	listview_curses.cc \
@@ -591,6 +595,8 @@ libdiag_a_SOURCES = \
 	sqlitepp.cc \
 	sqlite-extension-func.cc \
 	ssh_flow.cc \
+	ssh_stats.cc \
+	ssh_stats_vtab.cc \
 	static_file_vtab.cc \
 	statusview_curses.cc \
 	string-extension-functions.cc \

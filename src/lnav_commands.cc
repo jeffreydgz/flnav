@@ -90,6 +90,7 @@
 #include "sql_util.hh"
 #include "sqlite-extension-func.hh"
 #include "ssh_flow.hh"
+#include "ssh_stats.hh"
 #include "url_loader.hh"
 #include "vtab_module.hh"
 #include "yajl/api/yajl_parse.h"
@@ -2954,15 +2955,10 @@ build_ssh_stats_cache_fingerprint(size_t line_count)
         h.update(static_cast<int64_t>(st.st_mtime));
     }
 
-    std::vector<std::string> ioc_ips;
-    ioc_ips.reserve(lnav_data.ld_ioc_ips.size());
-    for (const auto& ip : lnav_data.ld_ioc_ips) {
-        ioc_ips.emplace_back(ip);
-    }
-    std::sort(ioc_ips.begin(), ioc_ips.end());
-    h.update(static_cast<int64_t>(ioc_ips.size()));
-    for (const auto& ip : ioc_ips) {
-        h.update(ip);
+    auto ioc_entries = lnav_data.ld_ioc_matcher.fingerprint_entries();
+    h.update(static_cast<int64_t>(ioc_entries.size()));
+    for (const auto& entry : ioc_entries) {
+        h.update(entry);
     }
 
     return h.to_string();
@@ -3027,8 +3023,7 @@ com_ssh_stats(exec_context& ec,
         styling::color_unit::from_rgb(rgb_color{0x2e, 0x34, 0x40}));
 
     auto is_ioc_ip = [](const std::string& ip) -> bool {
-        return !lnav_data.ld_ioc_ips.empty()
-            && lnav_data.ld_ioc_ips.count(ip) > 0;
+        return lnav_data.ld_ioc_matcher.matches(ip);
     };
 
     lnav::forensics::ssh_flow_stats ssh_stats;
@@ -3061,29 +3056,23 @@ com_ssh_stats(exec_context& ec,
     // --- Scan log lines ---
     static const auto& ui_timer = ui_periodic_timer::singleton();
     sig_atomic_t ssh_progress_counter = 0;
-    for (size_t vl_idx = 0; vl_idx < line_count; ++vl_idx) {
-        if (ui_timer.time_to_update(ssh_progress_counter)) {
-            lnav_data.ld_bottom_source.update_loading(vl_idx, line_count, "SSH Stats");
+    ssh_stats = lnav::forensics::collect_ssh_stats(
+        lss,
+        [&](size_t vl_idx, size_t total) {
+            if (total == 0) {
+                lnav_data.ld_bottom_source.update_loading(0, 0);
+                return;
+            }
+            if (!ui_timer.time_to_update(ssh_progress_counter)) {
+                return;
+            }
+            lnav_data.ld_bottom_source.update_loading(
+                vl_idx,
+                total,
+                "SSH Stats");
             lnav_data.ld_status[LNS_BOTTOM].set_needs_update();
             lnav_data.ld_status_refresher(lnav::func::op_type::blocking);
-        }
-        auto cl = lss.at(vis_line_t(vl_idx));
-        auto line_opt = lss.find_line_with_file(cl);
-        if (!line_opt) {
-            continue;
-        }
-        auto& [lf, ll_iter] = *line_opt;
-        auto read_res = lf->read_line(ll_iter);
-        if (read_res.isErr()) {
-            continue;
-        }
-        auto sbr      = read_res.unwrap();
-        auto sf       = sbr.to_string_fragment();
-        auto line_str = sf.to_string();
-
-        lnav::forensics::scan_ssh_line(sf, line_str, ssh_stats);
-    }
-    lnav_data.ld_bottom_source.update_loading(0, 0);
+        });
 
     auto sorted_flows = lnav::forensics::sorted_ssh_flows(ssh_stats);
 
@@ -3266,18 +3255,19 @@ com_ssh_stats(exec_context& ec,
             .append(" unique)\n"_h1);
         report.append(BAR + "\n");
 
-        if (!lnav_data.ld_ioc_ips.empty()) {
+        if (!lnav_data.ld_ioc_matcher.empty()) {
             size_t ioc_hits = 0;
             for (const auto& [ip, cnt] : ssh_stats.ip_counts) {
-                if (lnav_data.ld_ioc_ips.count(ip)) {
+                if (lnav_data.ld_ioc_matcher.matches(ip)) {
                     ++ioc_hits;
                 }
             }
             report.append("  IOC matches      : ")
                 .append(lnav::roles::number(fmt::to_string(ioc_hits)))
-                .append(" / ")
-                .append(lnav::roles::number(fmt::to_string(lnav_data.ld_ioc_ips.size())))
-                .append(" IPs from IOC file\n");
+                .append(" matching IPs / ")
+                .append(lnav::roles::number(fmt::to_string(
+                    lnav_data.ld_ioc_matcher.entry_count())))
+                .append(" IOC entries loaded\n");
             report.append(BAR + "\n");
         }
 

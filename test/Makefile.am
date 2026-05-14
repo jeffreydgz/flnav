@@ -315,6 +315,7 @@ dist_noinst_DATA = \
 	example.toml \
 	expected_help.txt \
 	gharchive_log.jsonl \
+	ioc_forensic_cidr.txt \
 	ioc_forensic_invalid_ipv4.txt \
 	ioc_forensic_ipv4.txt \
 	invalid-books.xml \

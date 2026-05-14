@@ -1,0 +1,13 @@
+┏━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━┓
+┃[1m  source_ip  [0m┃[1mdestination[0m┃[1m   outcome    [0m┃[1mtop_user [0m┃[1mevent_count[0m┃[1mioc_match [0m┃
+┡━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━┩
+│198.51.100.23│bastion    │→ Connection  │<NULL>   │          1│         1│
+│198.51.100.23│bastion    │⊘ Disconnected│alice    │          1│         1│
+│198.51.100.23│bastion    │✓ Accepted    │alice    │          1│         1│
+│198.51.100.23│bastion    │✗ Failed auth │admin    │          1│         1│
+│198.51.100.44│web01      │✓ Accepted    │dave     │          1│         1│
+│198.51.100.44│web01      │✓ Accepted    │dave     │          1│         1│
+│ 2001:db8::77│web01      │✗ Failed auth │frank piv│          1│         1│
+│ 203.0.113.99│web01      │✗ Failed auth │oracle   │          1│         0│
+│ 203.0.113.99│web01      │✗ Failed auth │oracle   │          1│         0│
+└━━━━━━━━━━━━━┴━━━━━━━━━━━┴━━━━━━━━━━━━━━┴━━━━━━━━━┴━━━━━━━━━━━┴━━━━━━━━━━┘
