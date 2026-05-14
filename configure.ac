@@ -1,4 +1,4 @@
-AC_INIT([flnav],[1.0.5],[https://github.com/jeffreydgz/flnav/issues],[flnav],[https://github.com/jeffreydgz/flnav])
+AC_INIT([flnav],[1.0.6],[https://github.com/jeffreydgz/flnav/issues],[flnav],[https://github.com/jeffreydgz/flnav])
 AC_CONFIG_SRCDIR([src/lnav.cc])
 AC_CONFIG_MACRO_DIR([m4])
 AM_INIT_AUTOMAKE([foreign subdir-objects])

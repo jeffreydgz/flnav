@@ -5,7 +5,7 @@ include(cmake/prelude.cmake)
 set(CMAKE_CXX_STANDARD 17)
 project(
         flnav
-        VERSION 1.0.5
+        VERSION 1.0.6
         DESCRIPTION "An enhanced log file viewer for forensic triage."
         HOMEPAGE_URL "https://github.com/jeffreydgz/flnav"
         LANGUAGES CXX C
