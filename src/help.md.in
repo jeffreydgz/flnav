@@ -554,11 +554,10 @@ commands, which is especially useful when scripting flnav.
 
 ## Contact
 
-For more information, visit the flnav website at:
+For more information, visit the flnav project page at:
 
-http://lnav.org
+https://github.com/jeffreydgz/flnav
 
-For support questions, email:
+For questions and bug reports, use the GitHub issues page:
 
-* lnav@googlegroups.com
-* support@lnav.org
+https://github.com/jeffreydgz/flnav/issues

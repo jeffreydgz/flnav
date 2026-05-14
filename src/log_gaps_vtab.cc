@@ -29,13 +29,14 @@
 
 #include "log_gaps_vtab.hh"
 
-#include <algorithm>
 #include <string>
 #include <vector>
 
 #include "base/lnav_log.hh"
 #include "config.h"
+#include "forensic_time.hh"
 #include "lnav.hh"
+#include "log_gap_detector.hh"
 #include "sql_help.hh"
 #include "vtab_module.hh"
 
@@ -48,35 +49,6 @@ enum {
     LG_COL_SEVERITY,
     LG_COL_THRESHOLD,
 };
-
-struct log_gaps_row {
-    std::string filename;
-    std::string gap_start;
-    std::string gap_end;
-    int64_t duration_secs;
-    bool other_files_active;
-    std::string severity;
-};
-
-static std::string
-format_timeval(const timeval& tv)
-{
-    bool normalize = lnav_data.ld_log_source.get_normalize_timestamps();
-    char buf[64];
-    struct tm tm;
-    if (normalize) {
-        gmtime_r(&tv.tv_sec, &tm);
-        auto len = strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm);
-        snprintf(buf + len, sizeof(buf) - len, ".%06ld",
-                 static_cast<long>(tv.tv_usec));
-    } else {
-        localtime_r(&tv.tv_sec, &tm);
-        auto len = strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm);
-        snprintf(buf + len, sizeof(buf) - len, ".%06ld",
-                 static_cast<long>(tv.tv_usec));
-    }
-    return std::string(buf);
-}
 
 struct log_gaps_vtab {
     static constexpr const char* NAME = "log_gaps";
@@ -98,7 +70,7 @@ CREATE TABLE log_gaps (
         sqlite3_vtab_cursor base;
         sqlite3_int64 c_rowid{0};
         int64_t c_threshold{300};
-        std::vector<log_gaps_row> c_rows;
+        std::vector<lnav::forensics::log_gap_record> c_rows;
 
         cursor(sqlite3_vtab* vt) : base({vt}) {}
 
@@ -135,6 +107,8 @@ CREATE TABLE log_gaps (
         }
 
         const auto& row = vc.c_rows[vc.c_rowid];
+        const auto normalize
+            = lnav_data.ld_log_source.get_normalize_timestamps();
 
         switch (col) {
             case LG_COL_LOG_FILE:
@@ -144,17 +118,27 @@ CREATE TABLE log_gaps (
                                     SQLITE_TRANSIENT);
                 break;
             case LG_COL_GAP_START:
+            {
+                auto formatted = lnav::forensics::format_timestamp_for_sql(
+                    row.gap_start,
+                    normalize);
                 sqlite3_result_text(ctx,
-                                    row.gap_start.c_str(),
-                                    row.gap_start.length(),
+                                    formatted.c_str(),
+                                    formatted.length(),
                                     SQLITE_TRANSIENT);
                 break;
+            }
             case LG_COL_GAP_END:
+            {
+                auto formatted = lnav::forensics::format_timestamp_for_sql(
+                    row.gap_end,
+                    normalize);
                 sqlite3_result_text(ctx,
-                                    row.gap_end.c_str(),
-                                    row.gap_end.length(),
+                                    formatted.c_str(),
+                                    formatted.length(),
                                     SQLITE_TRANSIENT);
                 break;
+            }
             case LG_COL_GAP_DURATION_SECONDS:
                 sqlite3_result_int64(ctx, row.duration_secs);
                 break;
@@ -215,12 +199,7 @@ rcFilter(sqlite3_vtab_cursor* pVtabCursor,
     }
     pCur->c_threshold = threshold;
 
-    // Collect per-file timestamps
-    struct file_ts {
-        std::string filename;
-        std::vector<timeval> timestamps;
-    };
-    std::vector<file_ts> files;
+    std::vector<lnav::forensics::log_gap_file> files;
 
     auto& lss = lnav_data.ld_log_source;
     for (auto it = lss.begin(); it != lss.end(); ++it) {
@@ -233,7 +212,7 @@ rcFilter(sqlite3_vtab_cursor* pVtabCursor,
             continue;
         }
 
-        file_ts ft;
+        lnav::forensics::log_gap_file ft;
         ft.filename = lf->get_filename().filename().string();
         ft.timestamps.reserve(lf->size());
         for (auto ll = lf->cbegin(); ll != lf->cend(); ++ll) {
@@ -242,48 +221,7 @@ rcFilter(sqlite3_vtab_cursor* pVtabCursor,
         files.push_back(std::move(ft));
     }
 
-    // Detect gaps for each file
-    for (size_t fi = 0; fi < files.size(); ++fi) {
-        auto& f = files[fi];
-        for (size_t li = 1; li < f.timestamps.size(); ++li) {
-            auto& prev_tv = f.timestamps[li - 1];
-            auto& cur_tv = f.timestamps[li];
-
-            int64_t delta = int64_t(cur_tv.tv_sec) - int64_t(prev_tv.tv_sec);
-            if (delta < threshold) {
-                continue;
-            }
-
-            // Cross-reference: check if other files have entries during gap
-            bool others_active = false;
-            for (size_t oi = 0; oi < files.size(); ++oi) {
-                if (oi == fi) {
-                    continue;
-                }
-                auto& other = files[oi];
-                auto lb = std::lower_bound(
-                    other.timestamps.begin(), other.timestamps.end(), prev_tv,
-                    [](const timeval& a, const timeval& b) {
-                        return timercmp(&a, &b, <);
-                    });
-                if (lb != other.timestamps.end()
-                    && timercmp(&(*lb), &cur_tv, <))
-                {
-                    others_active = true;
-                    break;
-                }
-            }
-
-            pCur->c_rows.push_back({
-                f.filename,
-                format_timeval(prev_tv),
-                format_timeval(cur_tv),
-                delta,
-                others_active,
-                others_active ? "suspicious" : "normal",
-            });
-        }
-    }
+    pCur->c_rows = lnav::forensics::detect_log_gaps(files, threshold);
 
     return SQLITE_OK;
 }

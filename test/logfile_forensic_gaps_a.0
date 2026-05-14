@@ -1,0 +1,3 @@
+2026-03-25T08:00:00+00:00 host-a sshd[3000]: Accepted password for alice from 198.51.100.23 port 54221 ssh2
+2026-03-25T08:01:00+00:00 host-a sudo: alice : TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/id
+2026-03-25T08:45:00+00:00 host-a sshd[3000]: pam_unix(sshd:session): session closed for user alice

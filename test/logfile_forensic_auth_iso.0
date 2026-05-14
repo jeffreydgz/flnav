@@ -1,0 +1,10 @@
+2026-03-25T13:03:20+00:00 web01 sshd[2000]: Accepted password for bob from 2001:db8::42 port 51234 ssh2
+2026-03-25T13:03:23+00:00 web01 sshd[2000]: pam_duo(sshd:auth): Successful Duo login for bob from 2001:db8::42
+2026-03-25T13:35:00+00:00 web01 sshd[2000]: Received disconnect from 2001:db8::42 port 51234:11: disconnected by user
+2026-03-25T14:45:00+00:00 web01 sshd[2001]: Failed publickey for invalid user oracle from "203.0.113.99" port 60123 ssh2
+2026-03-25T14:45:04+00:00 web01 sshd[2001]: pam_radius_auth(sshd:auth): authentication failure; user=oracle rhost=203.0.113.99
+2026-03-25T15:00:00+00:00 web01 sshd[2002]: Accepted keyboard-interactive/pam for dave from 198.51.100.44 port 61111 ssh2
+2026-03-25T15:00:01+00:00 web01 sshd[2002]: pam_ldap(sshd:auth): authentication success; user=dave rhost=198.51.100.44
+2026-03-25T15:10:00+00:00 web01 sshd[2003]: pam_krb5(sshd:auth): authentication failure; user=erin rhost=203.0.113.56
+2026-03-25T15:20:00+00:00 web01 sshd[2004]: pam_pkcs11(sshd:auth): authentication failure; user="frank piv" rhost=2001:db8::77
+2026-03-25T15:30:00+00:00 web01 sshd[2005]: pam_sss(sshd:auth): authentication failure; user=gina rhost=198.51.100.45

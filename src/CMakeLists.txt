@@ -549,6 +549,7 @@ add_library(
         filter_observer.cc
         filter_status_source.cc
         filter_sub_source.cc
+        forensic_time.cc
         fs-extension-functions.cc
         fstat_vtab.cc
         help_text.cc
@@ -576,6 +577,7 @@ add_library(
         log_data_table.cc
         log_format.cc
         log_format_loader.cc
+        log_gap_detector.cc
         log_search_table.cc
         log_gaps_vtab.cc
         log_stmt_vtab.cc
@@ -605,6 +607,7 @@ add_library(
         regex101.import.cc
         session.export.cc
         session_data.cc
+        session_trace.cc
         sequence_matcher.cc
         shlex.cc
         sqlite-extension-func.cc
@@ -619,6 +622,7 @@ add_library(
         sql_commands.cc
         sql_util.cc
         sqlitepp.cc
+        ssh_flow.cc
         state-extension-functions.cc
         styling.cc
         term_extra.cc
@@ -688,6 +692,7 @@ add_library(
         filter_observer.hh
         filter_status_source.hh
         filter_sub_source.hh
+        forensic_time.hh
         format.scripts.hh
         fstat_vtab.hh
         grep_highlighter.hh
@@ -718,6 +723,7 @@ add_library(
         log_format_ext.hh
         log_format_fwd.hh
         log_format_impls.cc
+        log_gap_detector.hh
         log_gutter_source.hh
         log_gaps_vtab.hh
         log_search_table.hh
@@ -754,6 +760,7 @@ add_library(
         safe/mutableref.h
         safe/safe.h
         session.export.hh
+        session_trace.hh
         sequence_sink.hh
         shlex.hh
         spectro_impls.hh
@@ -764,6 +771,7 @@ add_library(
         sql_help.hh
         sql_util.hh
         src_ref.hh
+        ssh_flow.hh
         static_file_vtab.hh
         strong_int.hh
         sysclip.hh
@@ -915,7 +923,7 @@ if (HAVE_LIBUTIL)
     target_link_libraries(diag util)
 endif ()
 
-add_executable(lnav ${lnav_SRCS})
-target_link_libraries(lnav diag)
+add_executable(flnav ${lnav_SRCS})
+target_link_libraries(flnav diag)
 
-install(TARGETS lnav DESTINATION bin)
+install(TARGETS flnav DESTINATION bin)

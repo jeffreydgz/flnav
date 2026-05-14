@@ -1,0 +1,48 @@
+ Session Trace: alice + bob (3 sessions, 5 matching lines)
+
+── Summary ──
+  First Seen: 2026-03-25T08:00:10.000000
+  Last Seen:  2026-03-25T13:03:23.000000
+  Time Span:  5h 03m 13s
+  Timeout:    10m 00s
+  Log Files:  logfile_forensic_auth_bsd.0, logfile_forensic_auth_iso.0
+  IPs Seen:   198.51.100.23, 2001:db8::42
+  Users Seen: alice, bob
+  Auth:       3 accepted, 0 failed
+  Outcomes:   1 closed, 2 opened
+  Longest:    5m 00s (Session 2)
+
+── Session 1 ──
+  Start:    2026-03-25T08:00:10.000000
+  End:      2026-03-25T08:00:10.000000
+  Duration: 00:00:00
+  Source:   198.51.100.23
+  User:     alice
+  Outcome:  opened
+  Lines:    1
+
+  [2026-03-25T08:00:10.000000] logfile_forensic_auth_bsd.0 | Mar 25 08:00:10 bastion sshd[1000]: Accepted publickey for alice from 198.51.100.23 port 54221 ssh2: ED25519 SHA256:example
+
+── Session 2 ──
+  Start:    2026-03-25T08:20:10.000000
+  End:      2026-03-25T08:25:10.000000
+  Duration: 00:05:00
+  Source:   198.51.100.23
+  User:     alice
+  Outcome:  closed
+  Lines:    2
+
+  [2026-03-25T08:20:10.000000] logfile_forensic_auth_bsd.0 | Mar 25 08:20:10 bastion sshd[1000]: pam_sss(sshd:session): session opened for user alice(uid=1001) by (uid=0)
+  [2026-03-25T08:25:10.000000] logfile_forensic_auth_bsd.0 | Mar 25 08:25:10 bastion sshd[1000]: Disconnected from user alice 198.51.100.23 port 54221
+
+── Session 3 ──
+  Start:    2026-03-25T13:03:20.000000
+  End:      2026-03-25T13:03:23.000000
+  Duration: 00:00:03
+  Source:   2001:db8::42
+  User:     bob
+  Outcome:  opened
+  Lines:    2
+
+  [2026-03-25T13:03:20.000000] logfile_forensic_auth_iso.0 | 2026-03-25T13:03:20+00:00 web01 sshd[2000]: Accepted password for bob from 2001:db8::42 port 51234 ssh2
+  [2026-03-25T13:03:23.000000] logfile_forensic_auth_iso.0 | 2026-03-25T13:03:23+00:00 web01 sshd[2000]: pam_duo(sshd:auth): Successful Duo login for bob from 2001:db8::42

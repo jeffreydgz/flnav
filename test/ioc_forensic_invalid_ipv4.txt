@@ -1,0 +1,10 @@
+# Invalid-looking and close-but-not-equal IPv4 values for IOC validation tests.
+999.999.999.999
+300.1.2.3
+198.51.100.230
+x198.51.100.23
+198.51.100.23x
+2001:db8::ffff
+2001:db8:::bad
+x2001:db8::42
+2001:db8::42x

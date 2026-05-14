@@ -28,6 +28,7 @@
  */
 
 #include <fstream>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -61,6 +62,7 @@
 #include "data_scanner.hh"
 #include "db_sub_source.hh"
 #include "field_overlay_source.hh"
+#include "forensic_time.hh"
 #include "hasher.hh"
 #include "itertools.similar.hh"
 #include "lnav.indexing.hh"
@@ -69,6 +71,7 @@
 #include "lnav_config.hh"
 #include "lnav_util.hh"
 #include "log.annotate.hh"
+#include "log_gap_detector.hh"
 #include "log_data_helper.hh"
 #include "log_data_table.hh"
 #include "log_format_loader.hh"
@@ -81,10 +84,12 @@
 #include "scn/scan.h"
 #include "service_tags.hh"
 #include "session_data.hh"
+#include "session_trace.hh"
 #include "shlex.hh"
 #include "spectro_impls.hh"
 #include "sql_util.hh"
 #include "sqlite-extension-func.hh"
+#include "ssh_flow.hh"
 #include "url_loader.hh"
 #include "vtab_module.hh"
 #include "yajl/api/yajl_parse.h"
@@ -2898,13 +2903,84 @@ com_reset_config(exec_context& ec,
     return Ok(retval);
 }
 
+struct ssh_stats_cache_key {
+    size_t ssk_line_count{0};
+    std::string ssk_fingerprint;
+
+    bool operator==(const ssh_stats_cache_key& rhs) const
+    {
+        return this->ssk_line_count == rhs.ssk_line_count
+            && this->ssk_fingerprint == rhs.ssk_fingerprint;
+    }
+};
+
+static std::string
+build_ssh_stats_cache_fingerprint(size_t line_count)
+{
+    auto& lss = lnav_data.ld_log_source;
+    hasher h;
+
+    h.update("ssh-stats-cache-v2", sizeof("ssh-stats-cache-v2") - 1);
+    h.update(static_cast<int64_t>(line_count));
+    h.update(static_cast<int64_t>(lss.lss_index_generation));
+    h.update(static_cast<int64_t>(
+        lnav_data.ld_active_files.fc_files_generation));
+    h.update(static_cast<int64_t>(lss.tss_apply_filters ? 1 : 0));
+    h.update(static_cast<int64_t>(lss.get_min_log_level()));
+    lss.update_filter_hash_state(h);
+
+    for (const auto& ld : lss) {
+        h.update(static_cast<int64_t>(ld->ld_file_index));
+        h.update(static_cast<int64_t>(ld->is_visible() ? 1 : 0));
+
+        auto lf = ld->get_file();
+        if (lf == nullptr) {
+            h.update(static_cast<int64_t>(0));
+            continue;
+        }
+
+        const auto& st = lf->get_stat();
+        h.update(static_cast<int64_t>(1));
+        h.update(lf->get_filename().string());
+        h.update(lf->get_content_id());
+        h.update(static_cast<int64_t>(lf->get_index_generation()));
+        h.update(static_cast<int64_t>(lf->get_index_size()));
+        h.update(static_cast<int64_t>(lf->get_indexed_file_offset()));
+        h.update(static_cast<int64_t>(lf->get_content_size()));
+        h.update(static_cast<int64_t>(lf->size()));
+        h.update(static_cast<int64_t>(st.st_dev));
+        h.update(static_cast<int64_t>(st.st_ino));
+        h.update(static_cast<int64_t>(st.st_size));
+        h.update(static_cast<int64_t>(st.st_mtime));
+    }
+
+    std::vector<std::string> ioc_ips;
+    ioc_ips.reserve(lnav_data.ld_ioc_ips.size());
+    for (const auto& ip : lnav_data.ld_ioc_ips) {
+        ioc_ips.emplace_back(ip);
+    }
+    std::sort(ioc_ips.begin(), ioc_ips.end());
+    h.update(static_cast<int64_t>(ioc_ips.size()));
+    for (const auto& ip : ioc_ips) {
+        h.update(ip);
+    }
+
+    return h.to_string();
+}
+
+static ssh_stats_cache_key
+build_ssh_stats_cache_key(size_t line_count)
+{
+    return {line_count, build_ssh_stats_cache_fingerprint(line_count)};
+}
+
 // Background-prebuild support: when set, com_ssh_stats builds the report
 // without flipping into the SSH view, so pressing `0` later switches
-// instantly with no rebuild.  s_ssh_stats_cached_lines tracks the line
-// count the cached report was built for; if the log grows or shrinks the
-// next interactive (or prebuild) call will rebuild.
+// instantly with no rebuild.  The cache key fingerprints the visible-log
+// generation, filter state, file state, and IOC set so same-sized changes do
+// not reuse stale forensic output.
 static bool s_ssh_stats_prebuild_mode = false;
-static size_t s_ssh_stats_cached_lines = 0;
+static std::optional<ssh_stats_cache_key> s_ssh_stats_cache_key;
 
 static Result<std::string, lnav::console::user_message>
 com_ssh_stats(exec_context& ec,
@@ -2932,11 +3008,14 @@ com_ssh_stats(exec_context& ec,
 
     auto& lss = lnav_data.ld_log_source;
     const size_t line_count = lss.text_line_count();
+    const auto cache_key = build_ssh_stats_cache_key(line_count);
 
-    // Fast path: report is already cached for the current log content.
+    // Fast path: report is already cached for the current log/filter/IOC state.
     // For interactive calls, just switch into the prebuilt view.
     // For prebuild calls, nothing to do.
-    if (s_ssh_stats_cached_lines == line_count && line_count > 0) {
+    if (line_count > 0 && s_ssh_stats_cache_key
+        && s_ssh_stats_cache_key.value() == cache_key)
+    {
         if (!prebuild) {
             ensure_view(&lnav_data.ld_views[LNV_SSH_STATS]);
         }
@@ -2952,127 +3031,7 @@ com_ssh_stats(exec_context& ec,
             && lnav_data.ld_ioc_ips.count(ip) > 0;
     };
 
-    // Flow key: (src_ip, dest_host, outcome, auth_source)
-    using FlowKey = std::tuple<std::string, std::string, std::string, std::string>;
-    struct FlowRecord {
-        std::map<std::string, size_t> user_counts;
-        size_t count = 0;
-    };
-    std::map<FlowKey, FlowRecord> flows;
-    std::set<std::string> unique_sources;
-    size_t total_ssh_events = 0;
-
-    // SSH event type counters
-    size_t ev_accepted{0}, ev_failed_pw{0}, ev_failed_pk{0};
-    size_t ev_invalid_user{0}, ev_too_many{0};
-    size_t ev_disconnected{0}, ev_closed_preauth{0};
-    size_t ev_client_disc{0}, ev_closed{0}, ev_new_conn{0};
-
-    // IP frequency map
-    std::map<std::string, size_t> ip_counts;
-
-    // --- Helpers ---
-
-    // First whitespace-delimited word after a literal marker in a line
-    auto extract_word_after
-        = [](const std::string& line, const std::string& marker) -> std::string {
-        auto pos = line.find(marker);
-        if (pos == std::string::npos) {
-            return {};
-        }
-        pos += marker.size();
-        while (pos < line.size() && line[pos] == ' ') {
-            ++pos;
-        }
-        auto end = line.find(' ', pos);
-        return line.substr(pos,
-                           end == std::string::npos ? std::string::npos
-                                                    : end - pos);
-    };
-
-    // Strip a matching pair of surrounding single or double quotes
-    auto strip_quotes = [](std::string s) -> std::string {
-        if (s.size() >= 2
-            && ((s.front() == '\'' && s.back() == '\'')
-                || (s.front() == '"' && s.back() == '"')))
-        {
-            return s.substr(1, s.size() - 2);
-        }
-        return s;
-    };
-
-    // Extract the syslog hostname by finding the word immediately before
-    // "sshd[" or "sshd:".  This works regardless of the timestamp format
-    // (BSD "Mon DD HH:MM:SS host", ISO "YYYY-MM-DDTHH:MM:SS host", etc.)
-    auto extract_syslog_host
-        = [](const std::string& line) -> std::string {
-        size_t sshd_pos = line.find("sshd[");
-        if (sshd_pos == std::string::npos) {
-            sshd_pos = line.find("sshd:");
-        }
-        if (sshd_pos == 0 || sshd_pos == std::string::npos) {
-            return {};
-        }
-        // Back up past any spaces before "sshd"
-        size_t end = sshd_pos - 1;
-        while (end > 0 && line[end] == ' ') {
-            --end;
-        }
-        // Find start of the word
-        size_t start = line.rfind(' ', end);
-        start = (start == std::string::npos) ? 0 : start + 1;
-        return line.substr(start, end - start + 1);
-    };
-
-    // Identify authentication source from a log line.
-    // Checks sshd "Accepted <method>" first, then PAM module names.
-    // Coverage:
-    //   password              → local /etc/shadow
-    //   publickey             → SSH public key
-    //   gssapi-with-mic/keyex → Kerberos/GSSAPI
-    //   keyboard-interactive  → falls through to PAM module detection
-    //   hostbased             → host-based trust
-    //   pam_sss               → SSSD (FreeIPA / LDAP / Active Directory via SSSD)
-    //   pam_krb5              → MIT/Heimdal Kerberos via PAM
-    //   pam_winbind           → Samba Winbind (Windows AD)
-    //   pam_google_authenticator / pam_duo / pam_oath / pam_yubico → MFA/OTP
-    //   pam_fprintd           → biometric (fingerprint)
-    //   pam_radius_auth       → RADIUS (network auth server)
-    //   pam_ldap              → legacy direct LDAP (nss_ldap era)
-    //   pam_pkcs11            → smartcard / PIV token
-    auto detect_auth_source = [](const std::string& line) -> std::string {
-        // SSH method from "Accepted <method> for ..." — most reliable
-        {
-            auto pos = line.find("Accepted ");
-            if (pos != std::string::npos) {
-                pos += 9;
-                auto end  = line.find(' ', pos);
-                auto meth = line.substr(
-                    pos, end == std::string::npos ? std::string::npos : end - pos);
-                if (meth == "password")                        return "local (/etc/shadow)";
-                if (meth == "publickey")                       return "public key";
-                if (meth == "gssapi-with-mic"
-                    || meth == "gssapi-keyex")                 return "Kerberos/GSSAPI";
-                if (meth == "hostbased")                       return "host-based";
-                if (meth == "none")                            return "none (no auth)";
-                // keyboard-interactive: fall through to PAM detection below
-            }
-        }
-        // PAM module detection (keyboard-interactive and explicit PAM log lines)
-        if (line.find("pam_sss")                  != std::string::npos) return "SSSD (LDAP/AD/IPA)";
-        if (line.find("pam_krb5")                 != std::string::npos) return "Kerberos (pam_krb5)";
-        if (line.find("pam_winbind")              != std::string::npos) return "Winbind/AD";
-        if (line.find("pam_google_authenticator") != std::string::npos) return "MFA/Google Auth";
-        if (line.find("pam_duo")                  != std::string::npos) return "MFA/Duo";
-        if (line.find("pam_oath")                 != std::string::npos) return "MFA/OTP";
-        if (line.find("pam_yubico")               != std::string::npos) return "MFA/YubiKey";
-        if (line.find("pam_fprintd")              != std::string::npos) return "Biometric";
-        if (line.find("pam_radius")               != std::string::npos) return "RADIUS";
-        if (line.find("pam_pkcs11")               != std::string::npos) return "Smartcard/PIV";
-        if (line.find("pam_ldap")                 != std::string::npos) return "LDAP";
-        if (line.find("keyboard-interactive")     != std::string::npos) return "PAM (interactive)";
-        return "";
-    };
+    lnav::forensics::ssh_flow_stats ssh_stats;
 
     // Count UTF-8 code points — equals visual terminal width for BMP characters
     auto vlen = [](const std::string& s) -> int {
@@ -3083,33 +3042,6 @@ com_ssh_stats(exec_context& ec,
             }
         }
         return w;
-    };
-
-    // Return true if the string resembles an IP address (contains '.' or ':')
-    // Used to reject words like "user", "invalid", etc. that are not IPs.
-    auto is_ip = [](const std::string& s) -> bool {
-        if (s.empty()) return false;
-        return s.find('.') != std::string::npos
-            || s.find(':') != std::string::npos;
-    };
-
-    // Emit one SSH event into the flow map
-    auto emit_flow = [&](const std::string& src_ip,
-                         const std::string& host,
-                         const std::string& outcome,
-                         const std::string& auth_source,
-                         const std::string& user)
-    {
-        FlowKey key{src_ip, host, outcome, auth_source};
-        auto& rec = flows[key];
-        rec.count++;
-        if (!user.empty()) {
-            rec.user_counts[user]++;
-        }
-        if (!src_ip.empty()) {
-            unique_sources.insert(src_ip);
-        }
-        ++total_ssh_events;
     };
 
     // Show the panel immediately with a placeholder so the user sees it's working,
@@ -3149,201 +3081,16 @@ com_ssh_stats(exec_context& ec,
         auto sf       = sbr.to_string_fragment();
         auto line_str = sf.to_string();
 
-        // IP address extraction via data_scanner (all lines)
-        data_scanner ds(sf);
-        while (true) {
-            auto tok_res = ds.tokenize2();
-            if (!tok_res) {
-                break;
-            }
-            if (tok_res->tr_token == DT_IPV4_ADDRESS
-                || tok_res->tr_token == DT_IPV6_ADDRESS)
-            {
-                auto ip_str = tok_res->to_string();
-                ip_counts[ip_str]++;
-                unique_sources.insert(ip_str);
-            } else if (tok_res->tr_token == DT_QUOTED_STRING) {
-                auto inner_sf = tok_res->inner_string_fragment();
-                data_scanner inner_ds(inner_sf, false);
-                auto inner_tok = inner_ds.tokenize2();
-                if (inner_tok
-                    && (inner_tok->tr_token == DT_IPV4_ADDRESS
-                        || inner_tok->tr_token == DT_IPV6_ADDRESS)
-                    && inner_tok->tr_capture.length() == inner_sf.length())
-                {
-                    auto ip_str = inner_tok->to_string();
-                    ip_counts[ip_str]++;
-                    unique_sources.insert(ip_str);
-                }
-            }
-        }
-
-        auto host = extract_syslog_host(line_str);
-
-        // Generic source-IP extraction: covers "... from <ip> ..." patterns.
-        // Validated with is_ip() to reject words like "user" or "invalid" that
-        // follow " from " in "Disconnected from user ..." or similar phrases.
-        auto raw_ip = extract_word_after(line_str, " from ");
-        if (raw_ip.empty()) {
-            raw_ip = extract_word_after(line_str, "Connection from ");
-        }
-        if (raw_ip.empty()
-            && line_str.find("Connection closed by") != std::string::npos)
-        {
-            auto after_by = extract_word_after(line_str, " by ");
-            if (after_by != "invalid") {
-                raw_ip = after_by;
-            } else {
-                auto utmp = extract_word_after(line_str, "invalid user ");
-                raw_ip   = extract_word_after(line_str, utmp + " ");
-            }
-        }
-        raw_ip = strip_quotes(raw_ip);
-        auto src_ip = is_ip(raw_ip) ? raw_ip : std::string{};
-
-        auto auth = detect_auth_source(line_str);
-
-        // Classify and emit
-        if (line_str.find("Accepted ") != std::string::npos) {
-            ++ev_accepted;
-            auto user = extract_word_after(line_str, " for ");
-            emit_flow(src_ip, host, "\xE2\x9C\x93 Accepted", auth, user);
-
-        } else if (line_str.find("Disconnecting: Too many") != std::string::npos
-                   || line_str.find("Too many authentication failures")
-                          != std::string::npos)
-        {
-            ++ev_too_many;
-            auto user = extract_word_after(line_str, " for ");
-            emit_flow(src_ip, host, "\xE2\x9C\x97 Too many failures", auth, user);
-
-        } else if (line_str.find("Failed password")  != std::string::npos
-                   || line_str.find("Failed publickey") != std::string::npos
-                   || line_str.find("Failed keyboard")  != std::string::npos)
-        {
-            if (line_str.find("Failed publickey") != std::string::npos) {
-                ++ev_failed_pk;
-            } else {
-                ++ev_failed_pw;
-            }
-            auto user_raw = extract_word_after(line_str, "Failed password for ");
-            if (user_raw.empty()) {
-                user_raw = extract_word_after(line_str, "Failed publickey for ");
-            }
-            if (user_raw.empty()) {
-                user_raw
-                    = extract_word_after(line_str, "Failed keyboard-interactive for ");
-            }
-            auto user = (user_raw == "invalid")
-                ? extract_word_after(line_str, "invalid user ")
-                : user_raw;
-            emit_flow(src_ip, host, "\xE2\x9C\x97 Failed auth", auth, user);
-
-        } else if (line_str.find("Invalid user ") != std::string::npos) {
-            ++ev_invalid_user;
-            auto user = extract_word_after(line_str, "Invalid user ");
-            emit_flow(src_ip, host, "\xE2\x9C\x97 Invalid user", auth, user);
-
-        } else if (line_str.find("authenticating user ") != std::string::npos) {
-            // Modern OpenSSH (8+) preauth close patterns:
-            //   "Connection closed by authenticating user <u> <ip> port <p> [preauth]"
-            //   "Disconnected from authenticating user <u> <ip> port <p> [preauth]"
-            ++ev_closed_preauth;
-            auto user    = extract_word_after(line_str, "authenticating user ");
-            auto auth_ip = extract_word_after(line_str,
-                                              "authenticating user " + user + " ");
-            auto ip = is_ip(auth_ip) ? auth_ip : src_ip;
-            emit_flow(ip, host, "\xE2\x8A\x98 Closed (preauth)", auth, user);
-
-        } else if (line_str.find("Disconnected from user ") != std::string::npos) {
-            ++ev_disconnected;
-            // Pattern: "Disconnected from user <user> <ip> port <port>"
-            // Generic src_ip extraction yields "user" (not an IP) so we
-            // extract the IP explicitly from after the username.
-            auto user   = extract_word_after(line_str, "Disconnected from user ");
-            auto disc_ip = extract_word_after(line_str,
-                                              "Disconnected from user " + user + " ");
-            auto ip = is_ip(disc_ip) ? disc_ip : src_ip;
-            emit_flow(ip, host, "\xE2\x8A\x98 Disconnected", auth, user);
-
-        } else if (line_str.find("Disconnected from") != std::string::npos) {
-            ++ev_disconnected;
-            emit_flow(src_ip, host, "\xE2\x8A\x98 Disconnected", auth, "");
-
-        } else if ((line_str.find("Received disconnect from") != std::string::npos
-                    || line_str.find("Connection closed by") != std::string::npos)
-                   && line_str.find("[preauth]") != std::string::npos)
-        {
-            ++ev_closed_preauth;
-            emit_flow(src_ip, host, "\xE2\x8A\x98 Closed (preauth)", auth, "");
-
-        } else if (line_str.find("Received disconnect from") != std::string::npos) {
-            ++ev_client_disc;
-            auto user = extract_word_after(line_str, "disconnected by user ");
-            emit_flow(src_ip, host, "\xE2\x8A\x98 Client disconnect", auth, user);
-
-        } else if (line_str.find("Connection closed by") != std::string::npos) {
-            ++ev_closed;
-            auto user = extract_word_after(line_str, "closed by invalid user ");
-            emit_flow(src_ip, host, "\xE2\x8A\x98 Closed", auth, user);
-
-        } else if (line_str.find("Connection from ") != std::string::npos
-                   || line_str.find("connection from ") != std::string::npos)
-        {
-            ++ev_new_conn;
-            emit_flow(src_ip, host, "\xE2\x86\x92 Connection", auth, "");
-
-        } else {
-            continue;
-        }
+        lnav::forensics::scan_ssh_line(sf, line_str, ssh_stats);
     }
     lnav_data.ld_bottom_source.update_loading(0, 0);
 
-    // Sort flows by source IP, then by outcome, then by dest host
-    std::vector<std::pair<FlowKey, size_t>> sorted_flows;
-    sorted_flows.reserve(flows.size());
-    for (auto& [key, rec] : flows) {
-        sorted_flows.emplace_back(key, rec.count);
-    }
-    std::sort(sorted_flows.begin(),
-              sorted_flows.end(),
-              [](const auto& a, const auto& b) {
-                  return a.first < b.first;
-              });
-
-    // Returns true for RFC-1918, loopback, link-local, and IPv6 ULA/loopback
-    auto is_private_ip = [](const std::string& ip) -> bool {
-        // IPv6 loopback / ULA / link-local
-        if (ip.find(':') != std::string::npos) {
-            if (ip == "::1") return true;
-            // fe80::/10  (link-local)
-            if (ip.size() >= 4
-                && (ip.substr(0, 4) == "fe80" || ip.substr(0, 4) == "FE80"))
-                return true;
-            // fc00::/7  (unique local: fc** and fd**)
-            if (ip.size() >= 2) {
-                auto pfx = ip.substr(0, 2);
-                if (pfx == "fc" || pfx == "fd" || pfx == "FC" || pfx == "FD")
-                    return true;
-            }
-            return false;
-        }
-        // Parse dotted-decimal IPv4
-        unsigned a = 0, b = 0, c = 0, d = 0;
-        if (sscanf(ip.c_str(), "%u.%u.%u.%u", &a, &b, &c, &d) != 4)
-            return false;
-        if (a == 10) return true;                            // 10.0.0.0/8
-        if (a == 127) return true;                           // 127.0.0.0/8
-        if (a == 172 && b >= 16 && b <= 31) return true;    // 172.16.0.0/12
-        if (a == 192 && b == 168) return true;               // 192.168.0.0/16
-        if (a == 169 && b == 254) return true;               // 169.254.0.0/16
-        return false;
-    };
+    auto sorted_flows = lnav::forensics::sorted_ssh_flows(ssh_stats);
 
     // Sort IPs by count descending, split into private and public
     std::vector<std::pair<size_t, std::string>> private_ips, public_ips;
-    for (auto& [ip, cnt] : ip_counts) {
-        if (is_private_ip(ip))
+    for (auto& [ip, cnt] : ssh_stats.ip_counts) {
+        if (lnav::forensics::is_private_ip(ip))
             private_ips.emplace_back(cnt, ip);
         else
             public_ips.emplace_back(cnt, ip);
@@ -3389,14 +3136,14 @@ com_ssh_stats(exec_context& ec,
     report.append("  SSH TRAFFIC FLOW MAP\n"_h1);
     report.append(BAR + "\n");
     report.append("  Total SSH events : ")
-        .append(lnav::roles::number(fmt::to_string(total_ssh_events)))
+        .append(lnav::roles::number(fmt::to_string(ssh_stats.total_ssh_events)))
         .append("\n");
     report.append("  Unique sources   : ")
-        .append(lnav::roles::number(fmt::to_string(unique_sources.size())))
+        .append(lnav::roles::number(fmt::to_string(ssh_stats.unique_sources.size())))
         .append("\n");
     report.append(BAR + "\n");
 
-    if (flows.empty()) {
+    if (ssh_stats.flows.empty()) {
         report.append("  (no SSH events found in loaded logs)\n"_comment);
     } else {
         // Header row
@@ -3423,7 +3170,7 @@ com_ssh_stats(exec_context& ec,
         // Data rows
         for (const auto& [key, cnt] : sorted_flows) {
             const auto& [src_ip, dest_host, outcome, auth_source] = key;
-            auto& rec = flows[key];
+            auto& rec = ssh_stats.flows[key];
 
             // Sort users by frequency descending
             std::vector<std::pair<size_t, std::string>> su;
@@ -3443,7 +3190,9 @@ com_ssh_stats(exec_context& ec,
             auto cnt_str = fmt::to_string(cnt);
             auto pct_str = fmt::format(
                 FMT_STRING("{:.1f}%"),
-                total_ssh_events > 0 ? (100.0 * cnt / total_ssh_events) : 0.0);
+                ssh_stats.total_ssh_events > 0
+                    ? (100.0 * cnt / ssh_stats.total_ssh_events)
+                    : 0.0);
 
             // Main row — first user inline
             attr_line_t row_line;
@@ -3492,16 +3241,21 @@ com_ssh_stats(exec_context& ec,
             .append(lnav::roles::number(fmt::to_string(count)))
             .append("\n");
     };
-    add_stat("Successful authentications :", ev_accepted);
-    add_stat("Failed password attempts   :", ev_failed_pw);
-    add_stat("Failed publickey attempts  :", ev_failed_pk);
-    add_stat("Invalid user attempts      :", ev_invalid_user);
-    add_stat("Too many auth failures     :", ev_too_many);
-    add_stat("Disconnections             :", ev_disconnected);
-    add_stat("Closed (preauth)           :", ev_closed_preauth);
-    add_stat("Client disconnects         :", ev_client_disc);
-    add_stat("Connection closed          :", ev_closed);
-    add_stat("New connections            :", ev_new_conn);
+    add_stat("Successful authentications :", ssh_stats.counters.accepted);
+    add_stat("Failed password attempts   :", ssh_stats.counters.failed_password);
+    add_stat("Failed publickey attempts  :", ssh_stats.counters.failed_publickey);
+    add_stat("Failed keyboard-interactive:",
+             ssh_stats.counters.failed_keyboard_interactive);
+    add_stat("Failed PAM attempts        :", ssh_stats.counters.failed_pam);
+    add_stat("Invalid user attempts      :", ssh_stats.counters.invalid_user);
+    add_stat("Too many auth failures     :",
+             ssh_stats.counters.too_many_auth_failures);
+    add_stat("Disconnections             :", ssh_stats.counters.disconnected);
+    add_stat("Closed (preauth)           :", ssh_stats.counters.closed_preauth);
+    add_stat("Client disconnects         :",
+             ssh_stats.counters.client_disconnect);
+    add_stat("Connection closed          :", ssh_stats.counters.closed);
+    add_stat("New connections            :", ssh_stats.counters.new_connection);
 
     // ── Section 3: IP Address Frequency ──────────────────────────────────────
     {
@@ -3514,7 +3268,7 @@ com_ssh_stats(exec_context& ec,
 
         if (!lnav_data.ld_ioc_ips.empty()) {
             size_t ioc_hits = 0;
-            for (const auto& [ip, cnt] : ip_counts) {
+            for (const auto& [ip, cnt] : ssh_stats.ip_counts) {
                 if (lnav_data.ld_ioc_ips.count(ip)) {
                     ++ioc_hits;
                 }
@@ -3566,16 +3320,15 @@ com_ssh_stats(exec_context& ec,
 
     lnav_data.ld_ssh_stats_source.replace_with(report);
     lnav_data.ld_views[LNV_SSH_STATS].reload_data();
-    s_ssh_stats_cached_lines = line_count;
+    s_ssh_stats_cache_key = cache_key;
 
     return Ok(std::string());
 }
 
 // Public entry point for background SSH-stats prebuild.  Called from
-// rebuild_indexes_repeatedly() once the log content has settled.  No-op
-// when the report is already cached for the current line count, when
-// there are no log lines yet, when a scan is interruptible, or when
-// re-entered.
+// rebuild_indexes_repeatedly() once the log content has settled.  No-op when
+// the report is already cached for the current log/filter/IOC state, when there
+// are no log lines yet, when a scan is interruptible, or when re-entered.
 void
 prewarm_ssh_stats()
 {
@@ -3584,7 +3337,11 @@ prewarm_ssh_stats()
     }
     auto& lss = lnav_data.ld_log_source;
     const size_t line_count = lss.text_line_count();
-    if (line_count == 0 || line_count == s_ssh_stats_cached_lines) {
+    if (line_count == 0) {
+        return;
+    }
+    const auto cache_key = build_ssh_stats_cache_key(line_count);
+    if (s_ssh_stats_cache_key && s_ssh_stats_cache_key.value() == cache_key) {
         return;
     }
     auto top = lnav_data.ld_view_stack.top();
@@ -3608,55 +3365,97 @@ prewarm_ssh_stats()
 static std::string
 forensic_format_tv(const timeval& tv, time_t local_offset = 0)
 {
-    bool normalize = lnav_data.ld_log_source.get_normalize_timestamps();
-    char buf[64];
-    struct tm tm;
-    if (normalize) {
-        time_t true_utc = tv.tv_sec - local_offset;
-        gmtime_r(&true_utc, &tm);
-        strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm);
-    } else {
-        gmtime_r(&tv.tv_sec, &tm);
-        strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm);
-    }
-    return std::string(buf) + fmt::format(FMT_STRING(".{:06d}"), tv.tv_usec);
+    return lnav::forensics::format_timestamp_for_view(
+        tv,
+        local_offset,
+        lnav_data.ld_log_source.get_normalize_timestamps());
 }
 
 static std::string
 forensic_format_duration(int64_t secs)
 {
-    if (secs >= 3600) {
-        return fmt::format(FMT_STRING("{}h {:02d}m {:02d}s"),
-                           secs / 3600, (secs % 3600) / 60, secs % 60);
-    }
-    if (secs >= 60) {
-        return fmt::format(FMT_STRING("{}m {:02d}s"), secs / 60, secs % 60);
-    }
-    return fmt::format(FMT_STRING("{}s"), secs);
+    return lnav::forensics::format_duration(secs);
 }
 
 // --- session-trace cached state ---
-struct st_trace_line {
-    timeval tv;
-    time_t local_offset{0};
-    std::string filename;
-    std::string text;
-    log_level_t level{log_level_t::LEVEL_UNKNOWN};
-};
+using st_trace_line = lnav::forensics::session_trace_line;
+using st_session_info = lnav::forensics::session_info;
 
-struct st_session_info {
-    timeval start_tv;
-    timeval end_tv;
-    time_t local_offset{0};
-    std::string source_ip;
-    std::string user;
-    std::string outcome;
-    std::vector<size_t> line_indices;
-};
+static constexpr int64_t DEFAULT_SESSION_TRACE_TIMEOUT_SECS = 30 * 60;
 
 static std::string s_session_trace_target;
 static std::vector<st_trace_line> s_session_trace_lines;
 static std::vector<st_session_info> s_session_trace_sessions;
+static int64_t s_session_trace_timeout_secs
+    = DEFAULT_SESSION_TRACE_TIMEOUT_SECS;
+
+static std::optional<int64_t>
+parse_forensic_duration_secs(const std::string& arg, std::string& errmsg)
+{
+    if (arg.empty()) {
+        errmsg = "missing duration";
+        return std::nullopt;
+    }
+
+    int64_t val = 0;
+    size_t pos = 0;
+    try {
+        val = std::stoll(arg, &pos);
+    } catch (...) {
+        errmsg = fmt::format(
+            FMT_STRING("invalid duration '{}' -- use a positive number with "
+                       "optional suffix s, m, or h"),
+            arg);
+        return std::nullopt;
+    }
+
+    if (pos == 0 || val <= 0) {
+        errmsg = fmt::format(
+            FMT_STRING("invalid duration '{}' -- use a positive number with "
+                       "optional suffix s, m, or h"),
+            arg);
+        return std::nullopt;
+    }
+
+    int64_t multiplier = 1;
+    if (pos < arg.size()) {
+        if (pos + 1 != arg.size()) {
+            errmsg = fmt::format(
+                FMT_STRING("invalid duration '{}' -- use a single suffix: "
+                           "s, m, or h"),
+                arg);
+            return std::nullopt;
+        }
+
+        switch (arg[pos]) {
+            case 's':
+            case 'S':
+                multiplier = 1;
+                break;
+            case 'm':
+            case 'M':
+                multiplier = 60;
+                break;
+            case 'h':
+            case 'H':
+                multiplier = 3600;
+                break;
+            default:
+                errmsg = fmt::format(
+                    FMT_STRING("unknown duration suffix '{}' -- use s, m, "
+                               "or h"),
+                    arg[pos]);
+                return std::nullopt;
+        }
+    }
+
+    if (val > INT64_MAX / multiplier) {
+        errmsg = fmt::format(FMT_STRING("duration '{}' is too large"), arg);
+        return std::nullopt;
+    }
+
+    return val * multiplier;
+}
 
 static void
 rebuild_session_trace_report()
@@ -3743,101 +3542,13 @@ rebuild_session_trace_report()
 
     // --- Forensic Summary ---
     if (!s_session_trace_sessions.empty()) {
-        // Gather aggregated data across all sessions and lines
-        std::set<std::string> all_files;
-        std::set<std::string> all_ips;
-        std::set<std::string> all_users;
-        size_t auth_accepted = 0;
-        size_t auth_failed = 0;
-        size_t outcome_closed = 0;
-        size_t outcome_opened = 0;
-        size_t outcome_unknown = 0;
-        size_t level_error = 0;
-        size_t level_warning = 0;
-        int64_t longest_dur = -1;
-        size_t longest_idx = 0;
-
-        static const auto auth_accept_re
-            = lnav::pcre2pp::code::from_const(
-                R"((?i)(?:Accepted |session opened|authenticated|login successful))");
-        static const auto auth_fail_re
-            = lnav::pcre2pp::code::from_const(
-                R"((?i)(?:Failed |authentication failure|invalid user|failed password|access denied|login failed|permission denied))");
-
-        for (auto& ml : s_session_trace_lines) {
-            all_files.insert(ml.filename);
-
-            if (ml.level == log_level_t::LEVEL_ERROR
-                || ml.level == log_level_t::LEVEL_CRITICAL
-                || ml.level == log_level_t::LEVEL_FATAL)
-            {
-                ++level_error;
-            } else if (ml.level == log_level_t::LEVEL_WARNING) {
-                ++level_warning;
-            }
-
-            auto line_sf = string_fragment::from_str(ml.text);
-            if (auth_accept_re.find_in(line_sf).ignore_error().has_value()) {
-                ++auth_accepted;
-            }
-            if (auth_fail_re.find_in(line_sf).ignore_error().has_value()) {
-                ++auth_failed;
-            }
-        }
-
-        for (size_t si = 0; si < s_session_trace_sessions.size(); ++si) {
-            auto& sess = s_session_trace_sessions[si];
-
-            if (!sess.source_ip.empty()) {
-                all_ips.insert(sess.source_ip);
-            }
-            if (!sess.user.empty()) {
-                all_users.insert(sess.user);
-            }
-
-            if (sess.outcome == "closed") {
-                ++outcome_closed;
-            } else if (sess.outcome == "opened") {
-                ++outcome_opened;
-            } else {
-                ++outcome_unknown;
-            }
-
-            int64_t dur = sess.end_tv.tv_sec - sess.start_tv.tv_sec;
-            if (dur > longest_dur) {
-                longest_dur = dur;
-                longest_idx = si;
-            }
-        }
-
-        // Also scan all lines for IPs not captured in session metadata
-        {
-            auto extract_all_ips
-                = [](const std::string& line,
-                     std::set<std::string>& out) {
-                      auto sf = string_fragment::from_str(line);
-                      data_scanner ds(sf);
-                      while (true) {
-                          auto tok_res = ds.tokenize2();
-                          if (!tok_res) {
-                              break;
-                          }
-                          if (tok_res->tr_token == DT_IPV4_ADDRESS
-                              || tok_res->tr_token == DT_IPV6_ADDRESS)
-                          {
-                              out.insert(tok_res->to_string());
-                          }
-                      }
-                  };
-            for (auto& ml : s_session_trace_lines) {
-                extract_all_ips(ml.text, all_ips);
-            }
-        }
+        auto summary = lnav::forensics::summarize_session_trace(
+            s_session_trace_lines,
+            s_session_trace_sessions);
 
         // First/last timestamps
         auto& first_line = s_session_trace_lines.front();
         auto& last_line = s_session_trace_lines.back();
-        int64_t total_span = last_line.tv.tv_sec - first_line.tv.tv_sec;
 
         push_line("");
         session_header_lines.push_back(
@@ -3851,12 +3562,19 @@ rebuild_session_trace_report()
             forensic_format_tv(last_line.tv, last_line.local_offset)));
         push_line(fmt::format(
             FMT_STRING("  Time Span:  {}"),
-            forensic_format_duration(total_span)));
+            forensic_format_duration(summary.total_span)));
+        if (s_session_trace_timeout_secs
+            != DEFAULT_SESSION_TRACE_TIMEOUT_SECS)
+        {
+            push_line(fmt::format(
+                FMT_STRING("  Timeout:    {}"),
+                forensic_format_duration(s_session_trace_timeout_secs)));
+        }
 
         // Log files
         {
             std::string files_str;
-            for (auto& f : all_files) {
+            for (auto& f : summary.all_files) {
                 if (!files_str.empty()) {
                     files_str += ", ";
                 }
@@ -3867,9 +3585,9 @@ rebuild_session_trace_report()
         }
 
         // IPs seen
-        if (!all_ips.empty()) {
+        if (!summary.all_ips.empty()) {
             std::string ips_str;
-            for (auto& ip : all_ips) {
+            for (auto& ip : summary.all_ips) {
                 if (!ips_str.empty()) {
                     ips_str += ", ";
                 }
@@ -3880,9 +3598,9 @@ rebuild_session_trace_report()
         }
 
         // Users seen
-        if (!all_users.empty()) {
+        if (!summary.all_users.empty()) {
             std::string users_str;
-            for (auto& u : all_users) {
+            for (auto& u : summary.all_users) {
                 if (!users_str.empty()) {
                     users_str += ", ";
                 }
@@ -3893,61 +3611,63 @@ rebuild_session_trace_report()
         }
 
         // Auth counts
-        if (auth_accepted > 0 || auth_failed > 0) {
+        if (summary.auth_accepted > 0 || summary.auth_failed > 0) {
             push_line(fmt::format(
                 FMT_STRING("  Auth:       {} accepted, {} failed"),
-                auth_accepted, auth_failed));
+                summary.auth_accepted, summary.auth_failed));
         }
 
         // Outcomes
         {
             std::string outcome_str;
-            if (outcome_closed > 0) {
+            if (summary.outcome_closed > 0) {
                 outcome_str += fmt::format(
-                    FMT_STRING("{} closed"), outcome_closed);
+                    FMT_STRING("{} closed"), summary.outcome_closed);
             }
-            if (outcome_opened > 0) {
+            if (summary.outcome_opened > 0) {
                 if (!outcome_str.empty()) {
                     outcome_str += ", ";
                 }
                 outcome_str += fmt::format(
-                    FMT_STRING("{} opened"), outcome_opened);
+                    FMT_STRING("{} opened"), summary.outcome_opened);
             }
-            if (outcome_unknown > 0) {
+            if (summary.outcome_unknown > 0) {
                 if (!outcome_str.empty()) {
                     outcome_str += ", ";
                 }
                 outcome_str += fmt::format(
-                    FMT_STRING("{} unknown"), outcome_unknown);
+                    FMT_STRING("{} unknown"), summary.outcome_unknown);
             }
             push_line(fmt::format(
                 FMT_STRING("  Outcomes:   {}"), outcome_str));
         }
 
         // Error/warning counts
-        if (level_error > 0 || level_warning > 0) {
+        if (summary.level_error > 0 || summary.level_warning > 0) {
             std::string err_str;
-            if (level_error > 0) {
+            if (summary.level_error > 0) {
                 err_str += fmt::format(
-                    FMT_STRING("{} error"), level_error);
+                    FMT_STRING("{} error"), summary.level_error);
             }
-            if (level_warning > 0) {
+            if (summary.level_warning > 0) {
                 if (!err_str.empty()) {
                     err_str += ", ";
                 }
                 err_str += fmt::format(
-                    FMT_STRING("{} warning"), level_warning);
+                    FMT_STRING("{} warning"), summary.level_warning);
             }
             push_line(fmt::format(
                 FMT_STRING("  Errors:     {}"), err_str));
         }
 
         // Longest session (only when 2+ sessions)
-        if (s_session_trace_sessions.size() > 1 && longest_dur >= 0) {
+        if (s_session_trace_sessions.size() > 1
+            && summary.longest_duration >= 0)
+        {
             push_line(fmt::format(
                 FMT_STRING("  Longest:    {} (Session {})"),
-                forensic_format_duration(longest_dur),
-                longest_idx + 1));
+                forensic_format_duration(summary.longest_duration),
+                summary.longest_index + 1));
         }
     }
 
@@ -4016,19 +3736,9 @@ rebuild_session_trace_report()
 }
 
 // --- log-gaps cached state ---
-struct lg_gap_record {
-    std::string filename;
-    timeval gap_start;
-    timeval gap_end;
-    time_t local_offset{0};
-    int64_t duration_secs;
-    bool other_files_active;
-    std::string severity;
-};
-
 static int64_t s_log_gaps_threshold_secs = 0;
 static size_t s_log_gaps_file_count = 0;
-static std::vector<lg_gap_record> s_log_gaps_records;
+static std::vector<lnav::forensics::log_gap_record> s_log_gaps_records;
 
 static void
 rebuild_log_gaps_report()
@@ -4038,13 +3748,19 @@ rebuild_log_gaps_report()
     }
 
     attr_line_t report;
+    auto plural = [](size_t count, const char* singular, const char* plural) {
+        return count == 1 ? singular : plural;
+    };
+
     std::vector<vis_line_t> gap_row_lines;
 
     report.append(fmt::format(
-        FMT_STRING(" Log Gap Analysis (threshold: {}, {} files, {} gaps found)"),
+        FMT_STRING(" Log Gap Analysis (threshold: {}, {} {}, {} {} found)"),
         forensic_format_duration(s_log_gaps_threshold_secs),
         s_log_gaps_file_count,
-        s_log_gaps_records.size()));
+        plural(s_log_gaps_file_count, "file", "files"),
+        s_log_gaps_records.size(),
+        plural(s_log_gaps_records.size(), "gap", "gaps")));
     report.append("\n");
 
     auto current_line = [&report]() -> vis_line_t {
@@ -4064,9 +3780,11 @@ rebuild_log_gaps_report()
         }
         if (suspicious_count > 0) {
             report.append(fmt::format(
-                FMT_STRING("\n  {} SUSPICIOUS gaps (other files have "
-                           "entries during gap)\n"),
-                suspicious_count));
+                FMT_STRING("\n  {} SUSPICIOUS {} (other files have "
+                           "entries during the {})\n"),
+                suspicious_count,
+                plural(suspicious_count, "gap", "gaps"),
+                plural(suspicious_count, "gap", "gaps")));
         }
 
         report.append("\n");
@@ -4125,40 +3843,6 @@ refresh_forensic_views()
 // :session-trace <actor> [<actor2> ...]
 // ---------------------------------------------------------------------------
 
-// Helper: check if a log line matches a single target (IP or username)
-static bool
-st_line_matches_target(const string_fragment& sf,
-                       const std::string& line_str,
-                       const std::string& target)
-{
-    // Check via data_scanner for exact IP matches
-    {
-        data_scanner ds(sf);
-        while (true) {
-            auto tok_res = ds.tokenize2();
-            if (!tok_res) {
-                break;
-            }
-            if ((tok_res->tr_token == DT_IPV4_ADDRESS
-                 || tok_res->tr_token == DT_IPV6_ADDRESS)
-                && tok_res->to_string() == target)
-            {
-                return true;
-            }
-        }
-    }
-
-    // Freetext match (case-insensitive) for usernames
-    auto it = std::search(
-        line_str.begin(), line_str.end(),
-        target.begin(), target.end(),
-        [](char a, char b) {
-            return std::tolower(static_cast<unsigned char>(a))
-                == std::tolower(static_cast<unsigned char>(b));
-        });
-    return it != line_str.end();
-}
-
 static Result<std::string, lnav::console::user_message>
 com_session_trace(exec_context& ec,
                   std::string cmdline,
@@ -4186,47 +3870,11 @@ com_session_trace(exec_context& ec,
             }
             auto sbr = read_res.unwrap();
             auto sf = sbr.to_string_fragment();
-
-            data_scanner ds(sf);
-            while (true) {
-                auto tok_res = ds.tokenize2();
-                if (!tok_res) {
-                    break;
-                }
-                if (tok_res->tr_token == DT_IPV4_ADDRESS
-                    || tok_res->tr_token == DT_IPV6_ADDRESS)
-                {
-                    suggestions.insert(tok_res->to_string());
-                }
-            }
-
-            // Extract "user <name>" patterns
             auto line_str = sf.to_string();
-            static const auto user_re
-                = lnav::pcre2pp::code::from_const(
-                    R"((?:user[= ]|User |for )(\S+))");
-            auto md = user_re.create_match_data();
-            auto inp = string_fragment::from_str(line_str);
-            while (user_re.capture_from(inp)
-                       .into(md)
-                       .matches()
-                       .ignore_error())
-            {
-                auto cap = md[1];
-                if (cap) {
-                    auto u = cap->to_string();
-                    if (u.size() > 1 && u.size() < 64) {
-                        suggestions.insert(u);
-                    }
-                }
-                auto last = md[0];
-                if (last) {
-                    inp = inp.substr(
-                        last->sf_end - inp.sf_begin);
-                } else {
-                    break;
-                }
-            }
+            lnav::forensics::collect_session_trace_suggestions(
+                sf,
+                line_str,
+                suggestions);
         }
 
         for (const auto& s : suggestions) {
@@ -4236,6 +3884,55 @@ com_session_trace(exec_context& ec,
     }
 
     if (args.size() < 2) {
+        return ec.make_error(
+            "expecting an IP address and/or username");
+    }
+
+    // Collect all targets from the arguments (args[1..N]), with an optional
+    // timeout override before or between targets.
+    int64_t timeout_secs = DEFAULT_SESSION_TRACE_TIMEOUT_SECS;
+    std::vector<std::string> targets;
+    for (size_t ti = 1; ti < args.size(); ++ti) {
+        const auto& arg = args[ti];
+
+        if (arg == "--timeout" || arg == "-t") {
+            if (ti + 1 >= args.size()) {
+                return ec.make_error(
+                    "expecting a duration after {}", arg);
+            }
+
+            std::string errmsg;
+            auto timeout_res
+                = parse_forensic_duration_secs(args[++ti], errmsg);
+            if (!timeout_res) {
+                return ec.make_error("{}", errmsg);
+            }
+            timeout_secs = timeout_res.value();
+            continue;
+        }
+
+        static const auto timeout_prefix = std::string("--timeout=");
+        if (arg.rfind(timeout_prefix, 0) == 0) {
+            auto timeout_arg = arg.substr(timeout_prefix.size());
+            std::string errmsg;
+            auto timeout_res
+                = parse_forensic_duration_secs(timeout_arg, errmsg);
+            if (!timeout_res) {
+                return ec.make_error("{}", errmsg);
+            }
+            timeout_secs = timeout_res.value();
+            continue;
+        }
+
+        if (arg.rfind("--", 0) == 0) {
+            return ec.make_error(
+                "unknown session-trace option '{}'", arg);
+        }
+
+        targets.push_back(arg);
+    }
+
+    if (targets.empty()) {
         return ec.make_error(
             "expecting an IP address and/or username");
     }
@@ -4252,12 +3949,6 @@ com_session_trace(exec_context& ec,
         return Ok(std::string());
     }
 
-    // Collect all targets from the arguments (args[1..N])
-    std::vector<std::string> targets;
-    for (size_t ti = 1; ti < args.size(); ++ti) {
-        targets.push_back(args[ti]);
-    }
-
     // Build display string for all targets
     std::string target_display;
     for (size_t ti = 0; ti < targets.size(); ++ti) {
@@ -4270,10 +3961,8 @@ com_session_trace(exec_context& ec,
     auto& lss = lnav_data.ld_log_source;
     const size_t line_count = lss.text_line_count();
 
-    // Default session inactivity timeout: 30 minutes
-    static constexpr int64_t SESSION_GAP_US = 30LL * 60 * 1000000;
-
     s_session_trace_target = target_display;
+    s_session_trace_timeout_secs = timeout_secs;
     s_session_trace_lines.clear();
     s_session_trace_sessions.clear();
     auto& matching_lines = s_session_trace_lines;
@@ -4322,7 +4011,11 @@ com_session_trace(exec_context& ec,
         // A line matches if it contains ANY of the specified targets
         bool matched = false;
         for (const auto& target : targets) {
-            if (st_line_matches_target(sf, line_str, target)) {
+            if (lnav::forensics::session_line_matches_target(
+                    sf,
+                    line_str,
+                    target))
+            {
                 matched = true;
                 break;
             }
@@ -4362,133 +4055,10 @@ com_session_trace(exec_context& ec,
                   return timercmp(&a.tv, &b.tv, <);
               });
 
-    // Session boundary keywords
-    static const auto session_open_re
-        = lnav::pcre2pp::code::from_const(
-            R"((?i)(?:session opened|connection from|Accepted |new connection|Connected))");
-    static const auto session_close_re
-        = lnav::pcre2pp::code::from_const(
-            R"((?i)(?:session closed|Disconnected from|Disconnecting|Connection closed|closed connection|Remove session))");
-
-    // Group lines into sessions
-    auto& sessions = s_session_trace_sessions;
-    st_session_info current;
-    current.start_tv = matching_lines[0].tv;
-    current.end_tv = matching_lines[0].tv;
-    current.local_offset = matching_lines[0].local_offset;
-    current.line_indices.push_back(0);
-    bool in_session = false;
-
-    // Helper to extract first IP from a line
-    auto extract_ip = [](const std::string& line) -> std::string {
-        auto sf = string_fragment::from_str(line);
-        data_scanner ds(sf);
-        while (true) {
-            auto tok_res = ds.tokenize2();
-            if (!tok_res) {
-                break;
-            }
-            if (tok_res->tr_token == DT_IPV4_ADDRESS
-                || tok_res->tr_token == DT_IPV6_ADDRESS)
-            {
-                return tok_res->to_string();
-            }
-        }
-        return {};
-    };
-
-    // Helper to extract user from a line
-    auto extract_user = [](const std::string& line) -> std::string {
-        static const auto re
-            = lnav::pcre2pp::code::from_const(
-                R"((?:user[= ]|User |for )(\S+))");
-        auto md = re.create_match_data();
-        auto inp = string_fragment::from_str(line);
-        if (re.capture_from(inp).into(md).matches().ignore_error()) {
-            auto cap = md[1];
-            if (cap) {
-                return cap->to_string();
-            }
-        }
-        return {};
-    };
-
-    for (size_t i = 0; i < matching_lines.size(); ++i) {
-        auto& ml = matching_lines[i];
-
-        if (i > 0) {
-            // Check for session boundary or timeout
-            int64_t delta_us
-                = (int64_t(ml.tv.tv_sec) - int64_t(current.end_tv.tv_sec))
-                      * 1000000LL
-                + (int64_t(ml.tv.tv_usec) - int64_t(current.end_tv.tv_usec));
-
-            // Check if previous line was a close event
-            bool prev_closed = false;
-            if (i > 0) {
-                auto prev_sf = string_fragment::from_str(
-                    matching_lines[i - 1].text);
-                prev_closed
-                    = session_close_re.find_in(prev_sf)
-                          .ignore_error()
-                          .has_value();
-            }
-
-            // Check if current line is an open event
-            auto cur_sf = string_fragment::from_str(ml.text);
-            bool cur_opens
-                = session_open_re.find_in(cur_sf)
-                      .ignore_error()
-                      .has_value();
-
-            bool new_session
-                = (prev_closed && cur_opens) || (delta_us > SESSION_GAP_US);
-
-            if (new_session) {
-                // Finalize current session
-                if (!current.source_ip.empty() || !current.user.empty()
-                    || !current.line_indices.empty())
-                {
-                    sessions.push_back(std::move(current));
-                }
-                current = st_session_info{};
-                current.start_tv = ml.tv;
-                current.local_offset = ml.local_offset;
-            }
-        }
-
-        current.end_tv = ml.tv;
-        current.line_indices.push_back(i);
-
-        // Try to extract IP and user from this line
-        if (current.source_ip.empty()) {
-            auto ip = extract_ip(ml.text);
-            if (!ip.empty()) {
-                current.source_ip = ip;
-            }
-        }
-        if (current.user.empty()) {
-            auto u = extract_user(ml.text);
-            if (!u.empty()) {
-                current.user = u;
-            }
-        }
-
-        // Detect outcome
-        auto cur_sf = string_fragment::from_str(ml.text);
-        if (session_close_re.find_in(cur_sf).ignore_error()) {
-            current.outcome = "closed";
-        }
-        if (session_open_re.find_in(cur_sf).ignore_error()) {
-            if (current.outcome.empty()) {
-                current.outcome = "opened";
-            }
-        }
-    }
-    // Push last session
-    if (!current.line_indices.empty()) {
-        sessions.push_back(std::move(current));
-    }
+    s_session_trace_sessions
+        = lnav::forensics::group_session_trace_lines(
+            matching_lines,
+            timeout_secs * 1000000LL);
 
     rebuild_session_trace_report();
 
@@ -4589,15 +4159,9 @@ com_log_gaps(exec_context& ec,
 
     s_log_gaps_records.clear();
     s_log_gaps_threshold_secs = threshold_secs;
-    auto& all_gaps = s_log_gaps_records;
 
     // Collect per-file line timestamps
-    struct file_info {
-        std::string filename;
-        std::vector<timeval> timestamps;
-        time_t local_offset{0};
-    };
-    std::vector<file_info> files;
+    std::vector<lnav::forensics::log_gap_file> files;
 
     auto& lss = lnav_data.ld_log_source;
 
@@ -4611,7 +4175,7 @@ com_log_gaps(exec_context& ec,
             continue;
         }
 
-        file_info fi;
+        lnav::forensics::log_gap_file fi;
         fi.filename = lf->get_filename().filename().string();
         auto* fmt = lf->get_format_ptr();
         if (fmt != nullptr) {
@@ -4624,61 +4188,10 @@ com_log_gaps(exec_context& ec,
         files.push_back(std::move(fi));
     }
 
-    // For each file, find gaps exceeding threshold
-    for (size_t fi_idx = 0; fi_idx < files.size(); ++fi_idx) {
-        auto& fi = files[fi_idx];
-        for (size_t li = 1; li < fi.timestamps.size(); ++li) {
-            auto& prev_tv = fi.timestamps[li - 1];
-            auto& cur_tv = fi.timestamps[li];
-
-            int64_t delta = (int64_t(cur_tv.tv_sec) - int64_t(prev_tv.tv_sec));
-            if (delta < threshold_secs) {
-                continue;
-            }
-
-            // Check if other files have entries during this gap
-            bool others_active = false;
-            for (size_t oi = 0; oi < files.size(); ++oi) {
-                if (oi == fi_idx) {
-                    continue;
-                }
-                auto& other = files[oi];
-                // Binary search for any timestamp in [prev_tv, cur_tv]
-                auto lb = std::lower_bound(
-                    other.timestamps.begin(), other.timestamps.end(), prev_tv,
-                    [](const timeval& a, const timeval& b) {
-                        return timercmp(&a, &b, <);
-                    });
-                if (lb != other.timestamps.end()
-                    && timercmp(&(*lb), &cur_tv, <))
-                {
-                    others_active = true;
-                    break;
-                }
-            }
-
-            all_gaps.push_back({
-                fi.filename,
-                prev_tv,
-                cur_tv,
-                fi.local_offset,
-                delta,
-                others_active,
-                others_active ? "suspicious" : "normal",
-            });
-        }
-    }
-
+    s_log_gaps_records
+        = lnav::forensics::detect_log_gaps(files, threshold_secs);
     lnav_data.ld_bottom_source.update_loading(0, 0);
-
-    // Sort by severity (suspicious first), then by duration descending
-    std::sort(all_gaps.begin(), all_gaps.end(),
-              [](const lg_gap_record& a, const lg_gap_record& b) {
-                  if (a.severity != b.severity) {
-                      return a.severity > b.severity;  // "suspicious" > "normal"
-                  }
-                  return a.duration_secs > b.duration_secs;
-              });
+    lnav::forensics::sort_log_gaps_for_display(s_log_gaps_records);
 
     s_log_gaps_file_count = files.size();
     rebuild_log_gaps_report();
@@ -5601,9 +5114,19 @@ readline_context::command_t STD_COMMANDS[] = {
                 "loaded log files, grouping by connect/disconnect boundaries "
                 "or inactivity timeout")
             .with_parameter(
+                help_text("--timeout",
+                          "Override the inactivity gap used to split sessions "
+                          "(default: 30m; supports s, m, h)")
+                    .with_format(help_parameter_format_t::HPF_STRING)
+                    .optional())
+            .with_parameter(
                 {"actor",
                  "One or more IP addresses and/or usernames to trace "
                  "across all logs (e.g. 192.168.1.1 admin)"})
+            .with_example({
+                "To split sessions after ten minutes of inactivity",
+                "--timeout 10m admin",
+            })
             .with_tags({"forensics"}),
     },
     {

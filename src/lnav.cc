@@ -33,6 +33,7 @@
  */
 
 #include <locale.h>
+#include <arpa/inet.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -50,11 +51,13 @@
 #    define _WCHAR_H_CPLUSPLUS_98_CONFORMANCE_
 #endif
 #include <algorithm>
+#include <cctype>
 #include <exception>
 #include <filesystem>
 #include <fstream>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -680,9 +683,6 @@ make it easier to navigate through files quickly.
         .append("\n")
         .append("  ")
         .append(":speech_balloon:"_emoji)
-        .append(" https://github.com/tstack/lnav/discussions\n")
-        .append("  ")
-        .append(":mailbox:"_emoji)
         .appendf(FMT_STRING(" {}\n"), PACKAGE_BUGREPORT)
         .append("Version"_h1)
         .appendf(FMT_STRING(": {}"), VCS_PACKAGE_STRING);
@@ -2739,6 +2739,88 @@ print_user_msgs(std::vector<lnav::console::user_message> error_list,
 
 verbosity_t verbosity = verbosity_t::standard;
 
+static std::string
+strip_ioc_token(std::string candidate)
+{
+    auto is_space = [](unsigned char ch) { return std::isspace(ch) != 0; };
+
+    while (!candidate.empty()
+           && is_space(static_cast<unsigned char>(candidate.front())))
+    {
+        candidate.erase(candidate.begin());
+    }
+    while (!candidate.empty()
+           && is_space(static_cast<unsigned char>(candidate.back())))
+    {
+        candidate.pop_back();
+    }
+
+    bool changed;
+    do {
+        changed = false;
+        if (candidate.size() >= 2
+            && ((candidate.front() == '\'' && candidate.back() == '\'')
+                || (candidate.front() == '"' && candidate.back() == '"')
+                || (candidate.front() == '[' && candidate.back() == ']')
+                || (candidate.front() == '(' && candidate.back() == ')')))
+        {
+            candidate = candidate.substr(1, candidate.size() - 2);
+            changed = true;
+        }
+    } while (changed);
+
+    while (!candidate.empty()
+           && (candidate.back() == ',' || candidate.back() == ';'))
+    {
+        candidate.pop_back();
+    }
+
+    return candidate;
+}
+
+static std::optional<std::string>
+normalize_ioc_ip(std::string candidate)
+{
+    candidate = strip_ioc_token(std::move(candidate));
+    if (candidate.empty()) {
+        return std::nullopt;
+    }
+
+    in_addr addr4;
+    if (inet_pton(AF_INET, candidate.c_str(), &addr4) == 1) {
+        char buf[INET_ADDRSTRLEN];
+        if (inet_ntop(AF_INET, &addr4, buf, sizeof(buf)) != nullptr) {
+            return std::string(buf);
+        }
+    }
+
+    in6_addr addr6;
+    if (inet_pton(AF_INET6, candidate.c_str(), &addr6) == 1) {
+        char buf[INET6_ADDRSTRLEN];
+        if (inet_ntop(AF_INET6, &addr6, buf, sizeof(buf)) != nullptr) {
+            return std::string(buf);
+        }
+    }
+
+    return std::nullopt;
+}
+
+static std::string
+escape_ioc_regex(const std::string& value)
+{
+    static const std::string meta = R"(\.^$|()[]{}*+?)";
+    std::string retval;
+
+    retval.reserve(value.size() * 2);
+    for (const auto ch : value) {
+        if (meta.find(ch) != std::string::npos) {
+            retval.push_back('\\');
+        }
+        retval.push_back(ch);
+    }
+    return retval;
+}
+
 static bool
 load_ioc_highlights(const std::string& path)
 {
@@ -2748,19 +2830,35 @@ load_ioc_highlights(const std::string& path)
         return false;
     }
 
-    static const auto ipv4_re = lnav::pcre2pp::code::from_const(
-        R"(\b(\d{1,3}(?:\.\d{1,3}){3})\b)");
-
     std::string line;
     while (std::getline(in, line)) {
         auto comment = line.find('#');
         if (comment != std::string::npos) {
             line.resize(comment);
         }
-        ipv4_re.capture_from(string_fragment::from_str(line))
-            .for_each([](lnav::pcre2pp::match_data& md) {
-                lnav_data.ld_ioc_ips.insert(md[1]->to_string());
-            });
+
+        std::string token;
+        auto flush_token = [&token]() {
+            if (token.empty()) {
+                return;
+            }
+            auto ip = normalize_ioc_ip(token);
+            if (ip) {
+                lnav_data.ld_ioc_ips.insert(ip.value());
+            }
+            token.clear();
+        };
+
+        for (const auto ch : line) {
+            if (std::isspace(static_cast<unsigned char>(ch)) || ch == ','
+                || ch == ';')
+            {
+                flush_token();
+            } else {
+                token.push_back(ch);
+            }
+        }
+        flush_token();
     }
 
     if (lnav_data.ld_ioc_ips.empty()) {
@@ -2772,13 +2870,11 @@ load_ioc_highlights(const std::string& path)
         if (!alt.empty()) {
             alt += '|';
         }
-        for (char c : ip) {
-            alt += (c == '.') ? "\\." : std::string(1, c);
-        }
+        alt += escape_ioc_regex(ip);
     }
-    std::string pat = "(?<![\\d.])(" + alt + ")(?![\\d.])";
+    std::string pat = "(?<![[:alnum:]_.:])(" + alt + ")(?![[:alnum:]_.:])";
 
-    auto compile_res = lnav::pcre2pp::code::from(pat, 0);
+    auto compile_res = lnav::pcre2pp::code::from(pat, PCRE2_CASELESS);
     if (compile_res.isOk()) {
         highlighter hl(compile_res.unwrap().to_shared());
         text_attrs ioc_attrs;

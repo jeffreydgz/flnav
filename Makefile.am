@@ -8,6 +8,8 @@ noinst_SCRIPTS = TESTS_ENVIRONMENT
 dist_man_MANS = flnav.1
 
 EXTRA_DIST = \
+    .github/workflows/ci.yml \
+    .github/workflows/release.yml \
     docs/lnav-architecture.png \
     docs/lnav-tui.png \
     docs/schemas/config-v1.schema.json \
@@ -19,4 +21,6 @@ EXTRA_DIST = \
     ARCHITECTURE.md \
 	AUTHORS \
 	LICENSE \
-    README.md
+    README.md \
+    RELEASE_CHECKLIST.md \
+    tools/package-release.sh

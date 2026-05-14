@@ -636,22 +636,21 @@ A delete will unset the environment variable:
  ┃;DELETE FROM environ WHERE name='LAST';    
 
 The table allows you to easily use the results of a SQL query in lnav 
-commands, which is especially useful when scripting lnav.
+commands, which is especially useful when scripting flnav.
 
 Contact
 
-For more information, visit the lnav website at:
+For more information, visit the flnav project page at:
 
-http://lnav.org[1]
+https://github.com/jeffreydgz/flnav[1]
 
- ┃[1] - http://lnav.org 
+ ┃[1] - https://github.com/jeffreydgz/flnav
 
-For support questions, email:
+For questions and bug reports, use the GitHub issues page:
 
-lnav@googlegroups.com[1] support@lnav.org[2]
+https://github.com/jeffreydgz/flnav/issues[1]
 
- ┃[1] - mailto:lnav@googlegroups.com 
- ┃[2] - mailto:support@lnav.org      
+ ┃[1] - https://github.com/jeffreydgz/flnav/issues
 
 Command Reference
 
@@ -4013,4 +4012,3 @@ Parameters
   cte-table-name   The name for the temporary table.
   select-stmt      The SELECT statement used to populate the temporary
                    table.
-

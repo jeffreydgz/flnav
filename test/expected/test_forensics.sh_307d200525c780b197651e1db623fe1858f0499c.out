@@ -1,0 +1,66 @@
+  ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  SSH TRAFFIC FLOW MAP
+  ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  Total SSH events : 18
+  Unique sources   : 11
+  ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  Source IP           SSH →  Destination      Outcome                 User(s)                 Auth source              Count  %
+  ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  198.51.100.23       SSH →  bastion          → Connection            —                       —                            1  5.6%
+  198.51.100.23       SSH →  bastion          ⊘ Disconnected          alice                   —                            1  5.6%
+  198.51.100.23       SSH →  bastion          ✓ Accepted              alice                   public key                   1  5.6%
+  198.51.100.23       SSH →  bastion          ✗ Failed auth           admin                   —                            1  5.6%
+  198.51.100.44       SSH →  web01            ✓ Accepted              dave                    LDAP                         1  5.6%
+  198.51.100.44       SSH →  web01            ✓ Accepted              dave                    PAM (interactive)            1  5.6%
+  198.51.100.45       SSH →  web01            ✗ Failed auth           gina                    SSSD (LDAP/AD/IPA)           1  5.6%
+  2001:db8::42        SSH →  web01            ⊘ Client disconnect     —                       —                            1  5.6%
+  2001:db8::42        SSH →  web01            ✓ Accepted              bob                     MFA/Duo                      1  5.6%
+  2001:db8::42        SSH →  web01            ✓ Accepted              bob                     local (/etc/shadow)          1  5.6%
+  2001:db8::77        SSH →  web01            ✗ Failed auth           frank piv               Smartcard/PIV                1  5.6%
+  2001:db8::99        SSH →  bastion          ⊘ Closed (preauth)      break glass             —                            1  5.6%
+  2001:db8::99        SSH →  bastion          ✗ Failed auth           break glass             PAM (interactive)            1  5.6%
+  203.0.113.55        SSH →  bastion          ✓ Accepted              carol                   Kerberos/GSSAPI              1  5.6%
+  203.0.113.56        SSH →  web01            ✗ Failed auth           erin                    Kerberos (pam_krb5)          1  5.6%
+  203.0.113.77        SSH →  bastion          ⊘ Closed (preauth)      root                    —                            1  5.6%
+  203.0.113.99        SSH →  web01            ✗ Failed auth           oracle                  —                            1  5.6%
+  203.0.113.99        SSH →  web01            ✗ Failed auth           oracle                  RADIUS                       1  5.6%
+
+  ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  SSH EVENT SUMMARY
+  ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  Successful authentications :            6
+  Failed password attempts   :            1
+  Failed publickey attempts  :            1
+  Failed keyboard-interactive:            1
+  Failed PAM attempts        :            4
+  Invalid user attempts      :            0
+  Too many auth failures     :            0
+  Disconnections             :            1
+  Closed (preauth)           :            2
+  Client disconnects         :            1
+  Connection closed          :            0
+  New connections            :            1
+
+  ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  IP ADDRESSES  (11 unique)
+  ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  IOC matches      : 0 / 2 IPs from IOC file
+  ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  PUBLIC IPs
+  Address                                       Count
+  ───────────────────────────────────────────────────
+  198.51.100.23                                 4
+  2001:db8::42                                  3
+  198.51.100.44                                 2
+  2001:db8::99                                  2
+  203.0.113.99                                  2
+  198.51.100.45                                 1
+  2001:db8::77                                  1
+  203.0.113.55                                  1
+  203.0.113.56                                  1
+  203.0.113.77                                  1
+
+  PRIVATE IPs
+  Address                                       Count
+  ───────────────────────────────────────────────────
+  10.0.0.5                                      1

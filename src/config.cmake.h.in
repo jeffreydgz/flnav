@@ -34,6 +34,6 @@
 
 #define _XOPEN_SOURCE_EXTENDED 1
 
-#define PACKAGE_BUGREPORT "lnav@googlegroups.com"
+#define PACKAGE_BUGREPORT "https://github.com/jeffreydgz/flnav/issues"
 
 #define HAVE_RUST_DEPS 1

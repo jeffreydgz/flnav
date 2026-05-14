@@ -1,0 +1,52 @@
+.TH FLNAV 1 "May 2026" "flnav 1.0.5" "User Commands"
+.SH NAME
+flnav \- forensic log navigator
+.SH SYNOPSIS
+.B flnav
+[\fIOPTIONS\fR] [\fIFILE\fR ...]
+.SH DESCRIPTION
+.B flnav
+is a fork of lnav, the Logfile Navigator, with added features for log
+analysis, security investigation, and forensic triage.
+.PP
+It can be installed alongside upstream
+.B lnav
+because it uses a separate binary name, configuration directory, and database
+schema.
+.SH OPTIONS
+.TP
+.BI --ioc " FILE"
+Load a plain-text IOC file and highlight matching IPv4 addresses in the log
+view and forensic reports.
+.TP
+.B -c
+Execute a command after loading files.
+.TP
+.B -n
+Run in headless mode.
+.SH FORENSIC COMMANDS
+.TP
+.B :normalize-timestamps [on|off]
+Toggle UTC timestamp normalization in the log view.
+.TP
+.B :ssh-stats
+Show the SSH Traffic Flow Map.
+.TP
+.B :session-trace ACTOR [...]
+Trace one or more IP addresses or usernames across loaded logs.
+.TP
+.B :log-gaps [THRESHOLD]
+Report gaps in log activity. Thresholds accept seconds, minutes, or hours
+using suffixes like 30s, 10m, or 2h.
+.SH FILES
+.TP
+.I ~/.flnav
+Default user configuration directory.
+.SH SEE ALSO
+Upstream lnav documentation is available at
+.UR https://docs.lnav.org
+.UE .
+.PP
+The flnav project page is
+.UR https://github.com/jeffreydgz/flnav
+.UE .

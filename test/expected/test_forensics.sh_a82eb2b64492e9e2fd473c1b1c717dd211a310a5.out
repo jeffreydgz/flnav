@@ -1,0 +1,2 @@
+Mar 25 08:00:10 bastion sshd[1000]: Accepted publickey for alice from 198.51.100.23 port 54221 ssh2: ED25519 SHA256:example
+Mar 25 08:25:10 bastion sshd[1000]: Disconnected from user alice 198.51.100.23 port 54221

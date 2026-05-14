@@ -1,0 +1,3 @@
+2026-03-25T08:10:00+00:00 host-b systemd[1]: Started Daily apt download activities.
+2026-03-25T08:20:00+00:00 host-b sshd[4000]: Failed password for invalid user backup from 203.0.113.99 port 60123 ssh2
+2026-03-25T08:30:00+00:00 host-b kernel: audit: type=1400 audit(1711355400.000:42): apparmor="STATUS" operation="profile_replace"

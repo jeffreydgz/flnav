@@ -51,6 +51,8 @@ src/dump-pid-sh.c
 src/help.c
 src/init-sql.c
 src/libdiag.a
+src/flnav
+src/flnav-test
 src/lnav
 src/lnav-test
 src/ptimec
@@ -59,6 +61,9 @@ src/stamp-h1
 src/static-libs/
 src/time_fmts.cc
 src/yajl/.dirstamp
+src/third-party/lnav-rs-ext/.dirstamp
+src/third-party/lnav-rs-ext/target/
+rust/target/
 test/drive_data_scanner
 test/drive_grep_proc
 test/drive_json_op
@@ -99,6 +104,7 @@ cmake-build/
 .vs/
 .vscode/
 build/
+release-artifacts/
 cmake/open-cpp-coverage.cmake
 cmake-build-*/
 conan/
@@ -106,8 +112,6 @@ prefix/
 CMakeLists.txt.user
 CMakeUserPresets.json
 vcpkg_installed/
-# CI workflows (not needed in private fork)
-.github/workflows/
 # Sensitive
 .secrets
 # Test temporaries

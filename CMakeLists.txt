@@ -4,10 +4,10 @@ include(cmake/prelude.cmake)
 
 set(CMAKE_CXX_STANDARD 17)
 project(
-        lnav
+        flnav
         VERSION 1.0.5
-        DESCRIPTION "An advanced log file viewer for the terminal."
-        HOMEPAGE_URL "https://lnav.org/"
+        DESCRIPTION "An enhanced log file viewer for forensic triage."
+        HOMEPAGE_URL "https://github.com/jeffreydgz/flnav"
         LANGUAGES CXX C
 )
 
@@ -43,12 +43,12 @@ endif ()
 
 # ---- Developer mode ----
 
-if (NOT lnav_DEVELOPER_MODE)
+if (NOT flnav_DEVELOPER_MODE)
     return()
 elseif (NOT PROJECT_IS_TOP_LEVEL)
     message(
             AUTHOR_WARNING
-            "Developer mode is intended for developers of lnav"
+            "Developer mode is intended for developers of flnav"
     )
 endif ()
 

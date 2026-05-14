@@ -61,7 +61,7 @@ Reconstruct a single actor's activity across all loaded log files, grouped into 
 
 | Interface | How to use |
 |---|---|
-| Command | `:session-trace <actor> [<actor2> ...]` |
+| Command | `:session-trace [--timeout 30m] <actor> [<actor2> ...]` |
 | Navigation | `n` / `N` — jump between sessions |
 
 Supports **multiple arguments** — trace by both IP and username simultaneously (e.g. `:session-trace 192.168.1.1 admin`). A line matches if it contains any of the specified targets.
@@ -76,7 +76,7 @@ Supports **multiple arguments** — trace by both IP and username simultaneously
 - Error and warning counts
 - Longest session duration
 
-Lines are grouped into sessions using connection boundaries and a 30-minute inactivity timeout. Each session header shows start/end time, duration, source IP, user, and outcome.
+Lines are grouped into sessions using connection boundaries and a 30-minute inactivity timeout by default. Override the inactivity window with `--timeout` using `s`, `m`, or `h` suffixes, such as `:session-trace --timeout 10m admin`. Each session header shows start/end time, duration, source IP, user, and outcome.
 
 **Syntax highlighting** — log lines are colorized with semantic colors: IPs, hostnames, usernames, PIDs, and process names each get distinct colors; numbers and quoted strings are highlighted; warning/error log levels are colored.
 
@@ -158,17 +158,35 @@ Click+drag to select text in any view. Double-click selects a word. An actions p
 
 ### Prerequisites
 
-- gcc/clang (C++14-compatible)
+- gcc/clang (C++17-compatible)
 - libpcre2
 - sqlite >= 3.9.0
 - zlib, bz2
 - libcurl >= 7.23.0
 - libarchive
 - libunistring
-- wireshark (`tshark`, for pcap support)
-- cargo/rust (for PRQL compiler)
+- cargo/rust and `cxxbridge` (for Rust extensions)
+- wireshark (`tshark`, optional, for pcap support)
+
+On Ubuntu/Debian, the CI-tested dependency set is:
+
+```console
+$ sudo apt-get update
+$ sudo apt-get install -y --no-install-recommends \
+    autoconf automake autopoint bison build-essential bzip2 cargo \
+    ca-certificates flex gettext libarchive-dev libbz2-dev \
+    libcurl4-openssl-dev libncurses-dev libpcre2-dev \
+    libreadline-dev libsqlite3-dev libtool libunistring-dev \
+    pkg-config re2c rustc xz-utils zlib1g-dev
+$ cargo install cxxbridge-cmd --locked --version 1.0.194
+$ export PATH="$HOME/.cargo/bin:$PATH"
+```
 
 ### Build
+
+The autotools build is the primary documented path and installs the `flnav`
+binary. CMake metadata is also kept aligned for packagers/toolchains that
+provide the required dependencies through CMake.
 
 ```console
 $ ./autogen.sh    # only needed when building from a git clone

@@ -841,7 +841,7 @@ basename(*path*)
     .. code-block::  custsqlite
 
       ;from [{p='foo/bar'}] | select { fs.basename p }
-        error: PRQL is not supported in this build
+      bar
 
   **See Also**
     :ref:`dirname`, :ref:`joinpath`, :ref:`readlink`, :ref:`realpath`
@@ -4085,6 +4085,20 @@ sign(*num*)
 ----
 
 
+.. _source_log_stmt:
+
+source_log_stmt(*path*)
+^^^^^^^^^^^^^^^^^^^^^^^
+
+  A table-valued function for getting information about log statements that were found in source code added by the :add-source-path command.
+
+  **Parameters**
+    * **path\*** --- The source file path
+
+
+----
+
+
 .. _sparkline:
 
 sparkline(*value*, *\[upper\]*)
@@ -4940,7 +4954,7 @@ aggregate *expr*
     .. code-block::  custsqlite
 
       ;from [{a=1}, {a=2}] | aggregate { arr = json.group_array a }
-        error: PRQL is not supported in this build
+      [1,2]
 
   **See Also**
     :ref:`prql_append`, :ref:`prql_derive`, :ref:`prql_filter`, :ref:`prql_from`, :ref:`prql_group`, :ref:`prql_join`, :ref:`prql_select`, :ref:`prql_sort`, :ref:`prql_take`, :ref:`stats_average_of`, :ref:`stats_by`, :ref:`stats_count_by`, :ref:`stats_hist`, :ref:`stats_sum_of`, :ref:`utils_distinct`
@@ -4980,7 +4994,9 @@ derive *column*
     .. code-block::  custsqlite
 
       ;from [{a=1}, {a=2}] | derive b = a * 2
-        error: PRQL is not supported in this build
+          a          b      
+               1          2 
+               2          4 
 
   **See Also**
     :ref:`prql_aggregate`, :ref:`prql_append`, :ref:`prql_filter`, :ref:`prql_from`, :ref:`prql_group`, :ref:`prql_join`, :ref:`prql_select`, :ref:`prql_sort`, :ref:`prql_take`, :ref:`stats_average_of`, :ref:`stats_by`, :ref:`stats_count_by`, :ref:`stats_hist`, :ref:`stats_sum_of`, :ref:`utils_distinct`
@@ -5004,7 +5020,7 @@ filter *expr*
     .. code-block::  custsqlite
 
       ;from [{a=1}, {a=2}] | filter a > 1
-        error: PRQL is not supported in this build
+      2
 
   **See Also**
     :ref:`prql_aggregate`, :ref:`prql_append`, :ref:`prql_derive`, :ref:`prql_from`, :ref:`prql_group`, :ref:`prql_join`, :ref:`prql_select`, :ref:`prql_sort`, :ref:`prql_take`, :ref:`stats_average_of`, :ref:`stats_by`, :ref:`stats_count_by`, :ref:`stats_hist`, :ref:`stats_sum_of`, :ref:`utils_distinct`
@@ -5028,14 +5044,19 @@ from *table*
     .. code-block::  custsqlite
 
       ;from http_status_codes | take 3
-        error: PRQL is not supported in this build
+        status       message     
+             100 Continue        
+             101 Switchi⋯otocols 
+             102 Processing      
 
     To use an array literal as a source:
 
     .. code-block::  custsqlite
 
       ;from [{ col1=1, col2='abc' }, { col1=2, col2='def' }]
-        error: PRQL is not supported in this build
+         col1    col2 
+               1 abc  
+               2 def  
 
   **See Also**
     :ref:`prql_aggregate`, :ref:`prql_append`, :ref:`prql_derive`, :ref:`prql_filter`, :ref:`prql_group`, :ref:`prql_join`, :ref:`prql_select`, :ref:`prql_sort`, :ref:`prql_take`, :ref:`stats_average_of`, :ref:`stats_by`, :ref:`stats_count_by`, :ref:`stats_hist`, :ref:`stats_sum_of`, :ref:`utils_distinct`
@@ -5060,7 +5081,11 @@ group *key_columns* *pipeline*
     .. code-block::  custsqlite
 
       ;from lnav_example_log | group { log_level } (aggregate { count this })
-        error: PRQL is not supported in this build
+      log_level  COUNT(*)  
+      debug              1 
+      info               1 
+      warn               1 
+      error              1 
 
   **See Also**
     :ref:`prql_aggregate`, :ref:`prql_append`, :ref:`prql_derive`, :ref:`prql_filter`, :ref:`prql_from`, :ref:`prql_join`, :ref:`prql_select`, :ref:`prql_sort`, :ref:`prql_take`, :ref:`stats_average_of`, :ref:`stats_by`, :ref:`stats_count_by`, :ref:`stats_hist`, :ref:`stats_sum_of`, :ref:`utils_distinct`
@@ -5102,14 +5127,18 @@ select *expr*
     .. code-block::  custsqlite
 
       ;from [{a=1, b='abc'}, {a=2, b='def'}] | select b
-        error: PRQL is not supported in this build
+       b  
+      abc 
+      def 
 
     To compute a new column from an input:
 
     .. code-block::  custsqlite
 
       ;from [{a=1}, {a=2}] | select b = a * 2
-        error: PRQL is not supported in this build
+          b      
+               2 
+               4 
 
   **See Also**
     :ref:`prql_aggregate`, :ref:`prql_append`, :ref:`prql_derive`, :ref:`prql_filter`, :ref:`prql_from`, :ref:`prql_group`, :ref:`prql_join`, :ref:`prql_sort`, :ref:`prql_take`, :ref:`stats_average_of`, :ref:`stats_by`, :ref:`stats_count_by`, :ref:`stats_hist`, :ref:`stats_sum_of`, :ref:`utils_distinct`
@@ -5133,7 +5162,9 @@ sort *expr*
     .. code-block::  custsqlite
 
       ;from [{a=1}, {a=2}] | sort {-a}
-        error: PRQL is not supported in this build
+          a      
+               2 
+               1 
 
   **See Also**
     :ref:`prql_aggregate`, :ref:`prql_append`, :ref:`prql_derive`, :ref:`prql_filter`, :ref:`prql_from`, :ref:`prql_group`, :ref:`prql_join`, :ref:`prql_select`, :ref:`prql_take`, :ref:`stats_average_of`, :ref:`stats_by`, :ref:`stats_count_by`, :ref:`stats_hist`, :ref:`stats_sum_of`, :ref:`utils_distinct`
@@ -5157,7 +5188,7 @@ stats.average_of *col*
     .. code-block::  custsqlite
 
       ;from [{a=1}, {a=1}, {a=2}] | stats.average_of a
-        error: PRQL is not supported in this build
+      1.3333333333333333
 
   **See Also**
     :ref:`prql_aggregate`, :ref:`prql_append`, :ref:`prql_derive`, :ref:`prql_filter`, :ref:`prql_from`, :ref:`prql_group`, :ref:`prql_join`, :ref:`prql_select`, :ref:`prql_sort`, :ref:`prql_take`, :ref:`stats_by`, :ref:`stats_count_by`, :ref:`stats_hist`, :ref:`stats_sum_of`, :ref:`utils_distinct`
@@ -5182,7 +5213,9 @@ stats.by *col* *values*
     .. code-block::  custsqlite
 
       ;from [{a=1, b=1}, {a=1, b=1}, {a=2, b=1}] | stats.by a {sum b}
-        error: PRQL is not supported in this build
+          a      COALESC⋯(b), 0) 
+               1               2 
+               2               1 
 
   **See Also**
     :ref:`prql_aggregate`, :ref:`prql_append`, :ref:`prql_derive`, :ref:`prql_filter`, :ref:`prql_from`, :ref:`prql_group`, :ref:`prql_join`, :ref:`prql_select`, :ref:`prql_sort`, :ref:`prql_take`, :ref:`stats_average_of`, :ref:`stats_count_by`, :ref:`stats_hist`, :ref:`stats_sum_of`, :ref:`utils_distinct`
@@ -5206,7 +5239,9 @@ stats.count_by *column*
     .. code-block::  custsqlite
 
       ;from [{a=1}, {a=1}, {a=2}] | stats.count_by a
-        error: PRQL is not supported in this build
+          a        total    
+               1          2 
+               2          1 
 
   **See Also**
     :ref:`prql_aggregate`, :ref:`prql_append`, :ref:`prql_derive`, :ref:`prql_filter`, :ref:`prql_from`, :ref:`prql_group`, :ref:`prql_join`, :ref:`prql_select`, :ref:`prql_sort`, :ref:`prql_take`, :ref:`stats_average_of`, :ref:`stats_by`, :ref:`stats_hist`, :ref:`stats_sum_of`, :ref:`utils_distinct`
@@ -5232,14 +5267,18 @@ stats.hist *col* *\[slice:'1h'\]* *\[top:10\]*
     .. code-block::  custsqlite
 
       ;from lnav_example_log | stats.hist ex_procname
-        error: PRQL is not supported in this build
+          tslice             v        
+      2017-02⋯.000000 {"gw":3,"hw":1} 
 
     To chart the values of ex_procname for every second:
 
     .. code-block::  custsqlite
 
       ;from lnav_example_log | stats.hist ex_procname slice:'1s'
-        error: PRQL is not supported in this build
+          tslice             v        
+      2017-02⋯.000000 {"gw":1,"hw":1} 
+      2017-02⋯.000000 {"gw":1}        
+      2017-02⋯.000000 {"gw":1}        
 
   **See Also**
     :ref:`prql_aggregate`, :ref:`prql_append`, :ref:`prql_derive`, :ref:`prql_filter`, :ref:`prql_from`, :ref:`prql_group`, :ref:`prql_join`, :ref:`prql_select`, :ref:`prql_sort`, :ref:`prql_take`, :ref:`stats_average_of`, :ref:`stats_by`, :ref:`stats_count_by`, :ref:`stats_sum_of`, :ref:`utils_distinct`
@@ -5263,7 +5302,7 @@ stats.sum_of *col*
     .. code-block::  custsqlite
 
       ;from [{a=1}, {a=1}, {a=2}] | stats.sum_of a
-        error: PRQL is not supported in this build
+      4
 
   **See Also**
     :ref:`prql_aggregate`, :ref:`prql_append`, :ref:`prql_derive`, :ref:`prql_filter`, :ref:`prql_from`, :ref:`prql_group`, :ref:`prql_join`, :ref:`prql_select`, :ref:`prql_sort`, :ref:`prql_take`, :ref:`stats_average_of`, :ref:`stats_by`, :ref:`stats_count_by`, :ref:`stats_hist`, :ref:`utils_distinct`
@@ -5287,14 +5326,16 @@ take *n_or_range*
     .. code-block::  custsqlite
 
       ;from [{a=1}, {a=2}, {a=3}] | take 1
-        error: PRQL is not supported in this build
+      1
 
     To pick the second and third rows:
 
     .. code-block::  custsqlite
 
       ;from [{a=1}, {a=2}, {a=3}] | take 2..3
-        error: PRQL is not supported in this build
+          a      
+               2 
+               3 
 
   **See Also**
     :ref:`prql_aggregate`, :ref:`prql_append`, :ref:`prql_derive`, :ref:`prql_filter`, :ref:`prql_from`, :ref:`prql_group`, :ref:`prql_join`, :ref:`prql_select`, :ref:`prql_sort`, :ref:`stats_average_of`, :ref:`stats_by`, :ref:`stats_count_by`, :ref:`stats_hist`, :ref:`stats_sum_of`, :ref:`utils_distinct`
@@ -5318,7 +5359,9 @@ utils.distinct *col*
     .. code-block::  custsqlite
 
       ;from [{a=1}, {a=1}, {a=2}] | utils.distinct a
-        error: PRQL is not supported in this build
+          a      
+               1 
+               2 
 
   **See Also**
     :ref:`prql_aggregate`, :ref:`prql_append`, :ref:`prql_derive`, :ref:`prql_filter`, :ref:`prql_from`, :ref:`prql_group`, :ref:`prql_join`, :ref:`prql_select`, :ref:`prql_sort`, :ref:`prql_take`, :ref:`stats_average_of`, :ref:`stats_by`, :ref:`stats_count_by`, :ref:`stats_hist`, :ref:`stats_sum_of`

@@ -394,6 +394,28 @@ dist_noinst_DATA = \
     test_events.sh_d9c7907f907b2335e1328b23fdc46d0968a608d9.out \
     test_events.sh_ed8dc44add223341c03ccb7b3e18371bdb42b710.err \
     test_events.sh_ed8dc44add223341c03ccb7b3e18371bdb42b710.out \
+    test_forensics.sh_18c02a58c4056b5234b4a7b2bcb3a458c896264a.err \
+    test_forensics.sh_18c02a58c4056b5234b4a7b2bcb3a458c896264a.out \
+    test_forensics.sh_1fc1de4efc8e92e1751133647ace58311c733269.err \
+    test_forensics.sh_1fc1de4efc8e92e1751133647ace58311c733269.out \
+    test_forensics.sh_307d200525c780b197651e1db623fe1858f0499c.err \
+    test_forensics.sh_307d200525c780b197651e1db623fe1858f0499c.out \
+    test_forensics.sh_520a046143f7db4e67f34dbfdf1aa1e3eff6f783.err \
+    test_forensics.sh_520a046143f7db4e67f34dbfdf1aa1e3eff6f783.out \
+    test_forensics.sh_812edca8cc96452544b4ad9b3b4cd32c8de84f96.err \
+    test_forensics.sh_812edca8cc96452544b4ad9b3b4cd32c8de84f96.out \
+    test_forensics.sh_81eaabfae85a478873b92a29e37a5bac6965e2be.err \
+    test_forensics.sh_81eaabfae85a478873b92a29e37a5bac6965e2be.out \
+    test_forensics.sh_81fb58ce8d22cde93cdf5c80e2b38007d707f40a.err \
+    test_forensics.sh_81fb58ce8d22cde93cdf5c80e2b38007d707f40a.out \
+    test_forensics.sh_8966c147edc59e39310056b671baa32b84e0aced.err \
+    test_forensics.sh_8966c147edc59e39310056b671baa32b84e0aced.out \
+    test_forensics.sh_9919ca9e58e2eda5964d6514c318abc90fc307ae.err \
+    test_forensics.sh_9919ca9e58e2eda5964d6514c318abc90fc307ae.out \
+    test_forensics.sh_a82eb2b64492e9e2fd473c1b1c717dd211a310a5.err \
+    test_forensics.sh_a82eb2b64492e9e2fd473c1b1c717dd211a310a5.out \
+    test_forensics.sh_ecd4ce4e88c5fce965c9a019ef2efde85a9b78a7.err \
+    test_forensics.sh_ecd4ce4e88c5fce965c9a019ef2efde85a9b78a7.out \
     test_format_installer.sh_1e08efc3b8c7b67d944a1f8c475cd31d98d5b4f6.err \
     test_format_installer.sh_1e08efc3b8c7b67d944a1f8c475cd31d98d5b4f6.out \
     test_format_installer.sh_6cd73153a8990b8ddb8ce489e90ec667a442f7f9.err \

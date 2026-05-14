@@ -212,6 +212,7 @@ dist_noinst_SCRIPTS = \
 	test_data_parser.sh \
 	test_demux.sh \
 	test_events.sh \
+	test_forensics.sh \
 	test_format_installer.sh \
 	test_format_loader.sh \
 	test_timeline.sh \
@@ -314,6 +315,8 @@ dist_noinst_DATA = \
 	example.toml \
 	expected_help.txt \
 	gharchive_log.jsonl \
+	ioc_forensic_invalid_ipv4.txt \
+	ioc_forensic_ipv4.txt \
 	invalid-books.xml \
 	listview_output.0 \
 	listview_output.1 \
@@ -360,6 +363,10 @@ dist_noinst_DATA = \
 	logfile_epoch.1 \
 	logfile_filter.0 \
 	logfile_filter.1 \
+	logfile_forensic_auth_bsd.0 \
+	logfile_forensic_auth_iso.0 \
+	logfile_forensic_gaps_a.0 \
+	logfile_forensic_gaps_b.0 \
 	logfile_for_join.0 \
 	logfile_generic.0 \
 	logfile_generic.1 \
@@ -543,6 +550,7 @@ TESTS = \
 	test_data_parser.sh \
 	test_demux.sh \
 	test_events.sh \
+	test_forensics.sh \
 	test_listview.sh \
 	test_meta.sh \
 	test_mvwattrline.sh \

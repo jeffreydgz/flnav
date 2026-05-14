@@ -1,0 +1,4 @@
+[1m[31m✘[0m [1m[31merror[0m: call to [1m[4mnormalize_ts[0m[4m([0m[4mts[0m[4m)[0m failed
+ [1m[31mreason[0m: unable to parse timestamp: not a timestamp
+[36m --> [0m[1mcommand-option[0m:1
+[36m | [0m[37m[40m;[0m[1m[36m[40mSELECT[0m[37m[40m [0m[1m[37m[40mnormalize_ts[0m[37m[40m([0m[35m[40m'not a timestamp'[0m[37m[40m) [0m

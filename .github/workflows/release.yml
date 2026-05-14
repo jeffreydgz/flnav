@@ -1,0 +1,190 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, matching configure.ac and CMakeLists.txt
+        required: true
+        type: string
+      draft:
+        description: Create the GitHub release as a draft
+        required: true
+        default: true
+        type: boolean
+      prerelease:
+        description: Mark the GitHub release as a prerelease
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    env:
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release input
+        id: validate
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_REF_NAME}" != "main" ]]; then
+            echo "Release workflow must be run from main." >&2
+            exit 1
+          fi
+
+          if [[ ! "${VERSION}" =~ ^[0-9]+[.][0-9]+[.][0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version '${VERSION}'." >&2
+            exit 1
+          fi
+
+          tag="v${VERSION}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "Tag ${tag} already exists. Increment the version instead." >&2
+            exit 1
+          fi
+
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "Release ${tag} already exists. Increment the version instead." >&2
+            exit 1
+          fi
+
+          grep -F "AC_INIT([flnav],[${VERSION}]" configure.ac
+          grep -Eq "VERSION[[:space:]]+${VERSION}" CMakeLists.txt
+
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            autoconf \
+            automake \
+            autopoint \
+            bison \
+            build-essential \
+            bzip2 \
+            cargo \
+            ca-certificates \
+            flex \
+            gettext \
+            libarchive-dev \
+            libbz2-dev \
+            libcurl4-openssl-dev \
+            libncurses-dev \
+            libpcre2-dev \
+            libreadline-dev \
+            libsqlite3-dev \
+            libtool \
+            libunistring-dev \
+            pkg-config \
+            re2c \
+            rustc \
+            xz-utils \
+            zlib1g-dev
+
+      - name: Install cxxbridge
+        run: |
+          cargo install cxxbridge-cmd --locked --version 1.0.194
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Bootstrap autotools
+        run: ./autogen.sh
+
+      - name: Configure
+        run: ./configure
+
+      - name: Build
+        run: make -j"$(nproc)"
+
+      - name: Run forensic regression tests
+        run: make -C test check TESTS=test_forensics.sh
+
+      - name: Verify binary version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          src/flnav -V
+          src/flnav -V | grep -F "flnav ${VERSION}"
+
+      - name: Package release artifacts
+        env:
+          VERSION: ${{ inputs.version }}
+        run: tools/package-release.sh "${VERSION}"
+
+      - name: Create release notes
+        env:
+          VERSION: ${{ inputs.version }}
+          TAG: ${{ steps.validate.outputs.tag }}
+        run: |
+          {
+            echo "flnav ${VERSION}"
+            echo
+            echo "Built from ${GITHUB_SHA}."
+            echo
+            echo "Artifacts:"
+            echo "- flnav-${VERSION}-source.tar.gz"
+            echo "- flnav-${VERSION}-linux-$(uname -m).tar.gz"
+            echo "- flnav-${VERSION}-SHA256SUMS.txt"
+            echo
+            echo "Older GitHub releases are intentionally left in place."
+          } > release-artifacts/RELEASE_NOTES.md
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: flnav-${{ inputs.version }}-release-artifacts
+          path: |
+            release-artifacts/*.tar.gz
+            release-artifacts/*-SHA256SUMS.txt
+
+      - name: Create GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.validate.outputs.tag }}
+          VERSION: ${{ inputs.version }}
+          DRAFT: ${{ inputs.draft }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+
+          release_flags=()
+          if [[ "${DRAFT}" == "true" ]]; then
+            release_flags+=(--draft)
+          fi
+          if [[ "${PRERELEASE}" == "true" ]]; then
+            release_flags+=(--prerelease)
+          fi
+
+          binary_archive="$(ls release-artifacts/flnav-"${VERSION}"-linux-*.tar.gz)"
+
+          gh release create "${TAG}" \
+            "release-artifacts/flnav-${VERSION}-source.tar.gz" \
+            "${binary_archive}" \
+            "release-artifacts/flnav-${VERSION}-SHA256SUMS.txt" \
+            --target "${GITHUB_SHA}" \
+            --title "flnav ${VERSION}" \
+            --notes-file release-artifacts/RELEASE_NOTES.md \
+            "${release_flags[@]}"

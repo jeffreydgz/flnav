@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-build:
+    name: Ubuntu autotools build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    env:
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check whitespace
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff --check "${{ github.event.pull_request.base.sha }}"..."${{ github.sha }}" -- . \
+              ':!src/help-md.cc' \
+              ':!src/internals/sql-ref.rst'
+          elif git rev-parse HEAD^ >/dev/null 2>&1; then
+            git diff --check HEAD^..HEAD -- . \
+              ':!src/help-md.cc' \
+              ':!src/internals/sql-ref.rst'
+          else
+            echo "Skipping whitespace range check on initial commit."
+          fi
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            autoconf \
+            automake \
+            autopoint \
+            bison \
+            build-essential \
+            bzip2 \
+            cargo \
+            ca-certificates \
+            flex \
+            gettext \
+            libarchive-dev \
+            libbz2-dev \
+            libcurl4-openssl-dev \
+            libncurses-dev \
+            libpcre2-dev \
+            libreadline-dev \
+            libsqlite3-dev \
+            libtool \
+            libunistring-dev \
+            pkg-config \
+            re2c \
+            rustc \
+            xz-utils \
+            zlib1g-dev
+
+      - name: Install cxxbridge
+        run: |
+          cargo install cxxbridge-cmd --locked --version 1.0.194
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Bootstrap autotools
+        run: ./autogen.sh
+
+      - name: Configure
+        run: ./configure
+
+      - name: Build
+        run: make -j"$(nproc)"
+
+      - name: Run forensic regression tests
+        run: make -C test check TESTS=test_forensics.sh

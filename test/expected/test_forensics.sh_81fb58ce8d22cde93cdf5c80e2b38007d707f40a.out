@@ -1,0 +1,7 @@
+ Log Gap Analysis (threshold: 15m 00s, 2 files, 1 gap found)
+
+  1 SUSPICIOUS gap (other files have entries during the gap)
+
+  FILE                      GAP START                    GAP END                      DURATION        XREF     SEVERITY
+  ------------------------- ---------------------------- ---------------------------- --------------- -------- ----------
+  ...ile_forensic_gaps_a.0  2026-03-25T08:01:00.000000   2026-03-25T08:45:00.000000   44m 00s         YES      suspicious

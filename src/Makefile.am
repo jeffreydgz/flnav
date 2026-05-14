@@ -295,6 +295,7 @@ noinst_HEADERS = \
 	filter_observer.hh \
 	filter_status_source.hh \
 	filter_sub_source.hh \
+	forensic_time.hh \
 	format.scripts.hh \
 	fstat_vtab.hh \
 	grep_highlighter.hh \
@@ -335,6 +336,7 @@ noinst_HEADERS = \
 	log_format_ext.hh \
 	log_format_fwd.hh \
 	log_format_loader.hh \
+	log_gap_detector.hh \
 	log_gaps_vtab.hh \
 	log_gutter_source.hh \
 	log_level.hh \
@@ -381,6 +383,7 @@ noinst_HEADERS = \
 	service_tags.hh \
 	session.export.hh \
 	session_data.hh \
+	session_trace.hh \
 	shared_buffer.hh \
 	shlex.hh \
 	spectro_impls.hh \
@@ -393,6 +396,7 @@ noinst_HEADERS = \
 	sql_util.hh \
 	sqlite-extension-func.hh \
 	src_ref.hh \
+	ssh_flow.hh \
 	static_file_vtab.hh \
 	styling.hh \
 	statusview_curses.hh \
@@ -521,6 +525,7 @@ libdiag_a_SOURCES = \
 	filter_observer.cc \
 	filter_status_source.cc \
 	filter_sub_source.cc \
+	forensic_time.cc \
 	fstat_vtab.cc \
     fs-extension-functions.cc \
 	grep_proc.cc \
@@ -547,6 +552,7 @@ libdiag_a_SOURCES = \
 	log_data_table.cc \
 	log_format.cc \
 	log_format_loader.cc \
+	log_gap_detector.cc \
 	log_gaps_vtab.cc \
 	log_level.cc \
 	log_level_re.cc \
@@ -577,12 +583,14 @@ libdiag_a_SOURCES = \
 	regexp_vtab.cc \
 	session.export.cc \
 	session_data.cc \
+	session_trace.cc \
 	shared_buffer.cc \
 	shlex.cc \
 	spectro_impls.cc \
 	spectro_source.cc \
 	sqlitepp.cc \
 	sqlite-extension-func.cc \
+	ssh_flow.cc \
 	static_file_vtab.cc \
 	statusview_curses.cc \
 	string-extension-functions.cc \
@@ -668,7 +676,8 @@ EXTRA_DIST = \
 	ptimec.cc
 
 CLEANFILES = \
-	ptimec$(BUILD_EXEEXT)
+	ptimec$(BUILD_EXEEXT) \
+	lnav-test
 
 DISTCLEANFILES = \
     $(LNAV_BUILT_FILES) \
@@ -706,14 +715,18 @@ uncrusty:
 		$(HEADERS))
 
 if !CROSS_COMPILING
-all-local: $(LNAV_BUILT_FILES) flnav $(RUST_DEPS)
+all-local: $(LNAV_BUILT_FILES) flnav lnav-test $(RUST_DEPS)
 	if test -w $(srcdir)/internals; then \
+		$(MKDIR_P) $(top_srcdir)/docs/schemas; \
 		env DUMP_INTERNALS_DIR=$(srcdir)/internals DUMP_CRASH=1 ./flnav Makefile; \
 		mv $(srcdir)/internals/*.schema.json $(top_srcdir)/docs/schemas; \
 	fi
 else
 all-local: $(LNAV_BUILT_FILES) $(RUST_DEPS)
 endif
+
+lnav-test: flnav-test
+	$(AM_V_GEN)$(LN_S) -f flnav-test $@
 
 check-local:
 if HAVE_CHECK_JSONSCHEMA
