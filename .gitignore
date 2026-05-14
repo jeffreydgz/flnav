@@ -114,6 +114,9 @@ CMakeUserPresets.json
 vcpkg_installed/
 # Sensitive
 .secrets
+# Local planning notes
+IMPROVEMENT_PLAN.md
+RELEASE_CHECKLIST.md
 # Test temporaries
 test_sql_normalize_ts.sh_*
 # Removed from fork
