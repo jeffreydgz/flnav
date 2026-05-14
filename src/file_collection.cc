@@ -32,6 +32,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <unordered_map>
 
 #include "file_collection.hh"
@@ -49,6 +50,8 @@
 #include "logfile.hh"
 #include "service_tags.hh"
 #include "tailer/tailer.looper.hh"
+
+using namespace lnav::roles::literals;
 
 static std::mutex REALPATH_CACHE_MUTEX;
 static std::unordered_map<std::string, std::string> REALPATH_CACHE;
@@ -889,6 +892,29 @@ file_collection::rescan_files(bool required)
                               retval.fc_files_high_mark.value());
                 }
                 retval.merge(v);
+            } catch (const std::bad_alloc&) {
+                auto um
+                    = lnav::console::user_message::error(
+                          "out of memory while loading files")
+                          .with_reason(
+                              "flnav ran out of memory while opening or "
+                              "indexing the selected files")
+                          .with_help(
+                              attr_line_t("Load fewer rotated logs, avoid "
+                                          "opening both plain and .gz copies of "
+                                          "the same auth log, or narrow the time "
+                                          "range with ")
+                                  .append("-S/--since"_quoted_code)
+                                  .append(" and ")
+                                  .append("-U/--until"_quoted_code));
+                retval.fc_name_to_stubs->writeAccess()->emplace(
+                    "selected files",
+                    file_stub_info{
+                        "selected files",
+                        time(nullptr),
+                        um.move(),
+                    });
+                log_error("rescan future ran out of memory");
             } catch (const std::exception& e) {
                 log_error("rescan future exception: %s", e.what());
             } catch (...) {

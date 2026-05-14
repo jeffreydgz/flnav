@@ -56,6 +56,7 @@
 #include <fstream>
 #include <map>
 #include <memory>
+#include <new>
 #include <optional>
 #include <string>
 #include <unordered_set>
@@ -4591,15 +4592,33 @@ SELECT tbl_name FROM sqlite_master WHERE sql LIKE 'CREATE VIRTUAL TABLE%'
         } catch (const std::system_error& e) {
             if (e.code().value() != EPIPE) {
                 fprintf(stderr, "error: %s\n", e.what());
+                retval = EXIT_FAILURE;
             }
         } catch (const line_buffer::error& e) {
             auto um = lnav::console::user_message::error("internal error")
                           .with_reason(strerror(e.e_err));
             lnav::console::print(stderr, um);
+            retval = EXIT_FAILURE;
+        } catch (const std::bad_alloc&) {
+            auto um
+                = lnav::console::user_message::error("out of memory")
+                      .with_reason(
+                          "flnav ran out of memory while loading or indexing "
+                          "the selected files")
+                      .with_help(
+                          attr_line_t("Load fewer rotated logs, avoid opening "
+                                      "both plain and .gz copies of the same "
+                                      "auth log, or narrow the time range with ")
+                              .append("-S/--since"_quoted_code)
+                              .append(" and ")
+                              .append("-U/--until"_quoted_code));
+            lnav::console::print(stderr, um);
+            retval = EXIT_FAILURE;
         } catch (const std::exception& e) {
             auto um = lnav::console::user_message::error("internal error")
                           .with_reason(e.what());
             lnav::console::print(stderr, um);
+            retval = EXIT_FAILURE;
         }
 
         // When reading from stdin, tell the user where the capture

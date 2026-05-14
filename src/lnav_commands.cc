@@ -2977,6 +2977,7 @@ build_ssh_stats_cache_key(size_t line_count)
 // not reuse stale forensic output.
 static bool s_ssh_stats_prebuild_mode = false;
 static std::optional<ssh_stats_cache_key> s_ssh_stats_cache_key;
+static constexpr size_t SSH_STATS_PREWARM_MAX_LINES = 250000;
 
 static Result<std::string, lnav::console::user_message>
 com_ssh_stats(exec_context& ec,
@@ -3325,9 +3326,16 @@ prewarm_ssh_stats()
     if (s_ssh_stats_prebuild_mode) {
         return;
     }
+    if (lnav_data.ld_flags.is_set<lnav_flags::headless>()) {
+        return;
+    }
     auto& lss = lnav_data.ld_log_source;
     const size_t line_count = lss.text_line_count();
     if (line_count == 0) {
+        return;
+    }
+    if (line_count > SSH_STATS_PREWARM_MAX_LINES) {
+        log_debug("skipping ssh-stats prebuild for %zu lines", line_count);
         return;
     }
     const auto cache_key = build_ssh_stats_cache_key(line_count);
